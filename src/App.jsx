@@ -537,37 +537,61 @@ export default function App() {
 
   if (!isAuthorized) {
     return (
-      <div className="access-shell">
+      <div className="access-shell tech-access">
         <div className="access-topbar">
           <div className="access-topbar-brand">
             <ETOMark />
             <div>
               <div className="access-topbar-title">ETO DIGITAL</div>
-              <div className="access-topbar-sub">Control ejecutivo de indicadores</div>
+              <div className="access-topbar-sub">
+                Control ejecutivo de indicadores
+              </div>
             </div>
           </div>
 
-          <div className="access-topbar-badge">Acceso corporativo</div>
+          <div className="access-topbar-badge">Entorno estratégico</div>
         </div>
 
         <div className="access-layout">
-          <section className="access-showcase">
-            <div className="access-badge">PLATAFORMA EJECUTIVA</div>
-            <h1>Controla la operación, el desempeño y la lectura ejecutiva desde un solo entorno.</h1>
-            <p>
-              ETO DIGITAL centraliza procesos, indicadores, captura diaria e histórico
-              en una experiencia visual corporativa, clara y enfocada en la toma de decisiones.
-            </p>
+          <section className="tech-left">
+            <div className="tech-glow"></div>
+            <div className="tech-grid-lines"></div>
+            <div className="tech-orb orb-a"></div>
+            <div className="tech-orb orb-b"></div>
 
-            <div className="access-info-panel">
-              <div className="access-info-line">
-                Acceso segmentado por nivel de reunión para mantener foco, orden y visibilidad correcta.
+            <div className="tech-badge-pill">PLATAFORMA INTELIGENTE</div>
+
+            <div className="tech-logo-block">
+              <ETOMark />
+            </div>
+
+            <div className="tech-copy">
+              <h1>ETO DIGITAL</h1>
+              <h2>Visibilidad, control y lectura ejecutiva en tiempo real.</h2>
+              <p>
+                Plataforma corporativa diseñada para seguimiento operativo,
+                análisis de desempeño y lectura ejecutiva centralizada con una
+                estética premium y tecnológica.
+              </p>
+            </div>
+
+            <div className="tech-cards">
+              <div className="tech-card">
+                <span>01</span>
+                <strong>Control total</strong>
+                <small>Gestión integral por nivel de reunión.</small>
               </div>
-              <div className="access-info-line">
-                El ingreso define automáticamente el alcance operativo y analítico del usuario.
+
+              <div className="tech-card">
+                <span>02</span>
+                <strong>Análisis ejecutivo</strong>
+                <small>Indicadores, tendencias y lectura visual rápida.</small>
               </div>
-              <div className="access-info-line strong">
-                Ingresa tu nivel y tu código corporativo para continuar.
+
+              <div className="tech-card">
+                <span>03</span>
+                <strong>Decisiones rápidas</strong>
+                <small>Entorno pensado para criterio y acción.</small>
               </div>
             </div>
           </section>
@@ -576,20 +600,20 @@ export default function App() {
             <div className="access-login-head">
               <AccessHeroLogo />
               <h2>Iniciar acceso</h2>
-              <p>Seleccione su nivel de reunión e ingrese su código de acceso.</p>
+              <p>Seleccione su nivel e ingrese su código corporativo.</p>
             </div>
 
             <form onSubmit={handleAccessSubmit} className="access-form">
               <div className="field">
-                <label>Nivel de ingreso</label>
+                <label>Nivel</label>
                 <select
                   value={accessLevel}
                   onChange={(e) => setAccessLevel(e.target.value)}
                   required
                 >
                   <option value="">Seleccione</option>
-                  <option value="1">Reunión Nivel 1</option>
-                  <option value="2">Reunión Nivel 2</option>
+                  <option value="1">Nivel 1</option>
+                  <option value="2">Nivel 2</option>
                 </select>
               </div>
 
@@ -599,7 +623,7 @@ export default function App() {
                   type="password"
                   value={accessCode}
                   onChange={(e) => setAccessCode(e.target.value)}
-                  placeholder="Ingrese su código"
+                  placeholder="Ingrese código"
                   required
                 />
               </div>
@@ -609,7 +633,7 @@ export default function App() {
               <button className="primary access-btn">Ingresar al sistema</button>
 
               <div className="access-note">
-                El acceso permanece limitado al nivel seleccionado durante la sesión activa.
+                Acceso controlado por nivel y restringido durante la sesión activa.
               </div>
             </form>
           </section>
