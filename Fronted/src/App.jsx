@@ -65,11 +65,16 @@ const EMPTY_INDICATOR_FORM = {
   shifts: ["A", "B", "C"],
 };
 
-function ETOMark() {
+function LogoImage({ className = "" }) {
   return (
-    <div className="eto-logo-mark real-logo" aria-hidden="true">
-      <img src="/INOVA.jpeg" alt="ETO DIGITAL" className="eto-logo-image" />
-    </div>
+    <img
+      src="/INOVA.png"
+      alt="ETO DIGITAL"
+      className={className}
+      onError={(e) => {
+        e.currentTarget.src = "/INOVA.jpeg";
+      }}
+    />
   );
 }
 
@@ -77,7 +82,7 @@ function AccessHeroLogo() {
   return (
     <div className="access-hero-logo" aria-hidden="true">
       <div className="access-hero-logo-inner">
-        <ETOMark />
+        <LogoImage className="eto-logo-image hero-logo-image" />
       </div>
     </div>
   );
@@ -156,7 +161,10 @@ export default function App() {
       setHistoryFilter((prev) => ({ ...prev, level: String(accessLevel) }));
       setDashboardFilter((prev) => ({ ...prev, level: String(accessLevel) }));
       setProcessForm((prev) => ({ ...prev, level: Number(accessLevel) }));
-      setIndicatorForm((prev) => ({ ...prev, meeting_level: Number(accessLevel) }));
+      setIndicatorForm((prev) => ({
+        ...prev,
+        meeting_level: Number(accessLevel),
+      }));
     }
   }, [isAuthorized, accessLevel]);
 
@@ -355,7 +363,10 @@ export default function App() {
       warning_value: item.warning_value,
       critical_operator: item.critical_operator,
       critical_value: item.critical_value,
-      shifts: item.shifts.split(",").map((x) => x.trim()).filter(Boolean),
+      shifts: item.shifts
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean),
     });
     closeMobileSidebar();
   }
@@ -500,7 +511,9 @@ export default function App() {
 
   const dashboardPieData = useMemo(() => {
     const source =
-      dashboardData?.status_distribution || dashboardOverview?.status_distribution || [];
+      dashboardData?.status_distribution ||
+      dashboardOverview?.status_distribution ||
+      [];
     const total = source.reduce((acc, item) => acc + item.value, 0);
 
     return source
@@ -537,7 +550,7 @@ export default function App() {
       <div className="access-shell tech-access">
         <div className="access-topbar">
           <div className="access-topbar-brand">
-            <ETOMark />
+            <LogoImage className="eto-logo-image topbar-logo-image" />
             <div>
               <div className="access-topbar-title">ETO DIGITAL</div>
               <div className="access-topbar-sub">
@@ -559,7 +572,7 @@ export default function App() {
             <div className="tech-badge-pill">PLATAFORMA INTELIGENTE</div>
 
             <div className="tech-logo-block">
-              <ETOMark />
+              <LogoImage className="eto-logo-image tech-logo-main-image" />
             </div>
 
             <div className="tech-copy">
@@ -630,7 +643,8 @@ export default function App() {
               <button className="primary access-btn">Ingresar al sistema</button>
 
               <div className="access-note">
-                Acceso controlado por nivel y restringido durante la sesión activa.
+                Acceso controlado por nivel y restringido durante la sesión
+                activa.
               </div>
             </form>
           </section>
@@ -653,7 +667,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="sidebar-top">
           <div className="sidebar-head premium">
-            <ETOMark />
+            <LogoImage className="eto-logo-image sidebar-logo-image" />
             <div className="brand-wrap">
               <div className="brand">ETO DIGITAL</div>
               <div className="brand-sub">
@@ -718,11 +732,13 @@ export default function App() {
             </button>
 
             <div>
-              <div className="section-kicker top-kicker">PLATAFORMA CORPORATIVA</div>
+              <div className="section-kicker top-kicker">
+                PLATAFORMA CORPORATIVA
+              </div>
               <h1>{activeTabLabel}</h1>
               <p>
-                Gestión, captura y analítica ejecutiva con visión centralizada. Nivel activo:{" "}
-                <strong>{accessLevel}</strong>
+                Gestión, captura y analítica ejecutiva con visión centralizada.
+                Nivel activo: <strong>{accessLevel}</strong>
               </p>
             </div>
           </div>
@@ -804,7 +820,10 @@ export default function App() {
                   {editingProcessId ? "Editar proceso" : "Crear proceso"}
                 </div>
 
-                <form onSubmit={handleCreateProcess} className="inline-form-grid two-cols">
+                <form
+                  onSubmit={handleCreateProcess}
+                  className="inline-form-grid two-cols"
+                >
                   <div className="field">
                     <label>Nombre</label>
                     <input
@@ -825,7 +844,9 @@ export default function App() {
                   <div className="field full">
                     <div className="actions">
                       <button className="primary">
-                        {editingProcessId ? "Actualizar proceso" : "Crear proceso"}
+                        {editingProcessId
+                          ? "Actualizar proceso"
+                          : "Crear proceso"}
                       </button>
 
                       {editingProcessId && (
@@ -917,7 +938,10 @@ export default function App() {
                     <input
                       value={indicatorForm.name}
                       onChange={(e) =>
-                        setIndicatorForm({ ...indicatorForm, name: e.target.value })
+                        setIndicatorForm({
+                          ...indicatorForm,
+                          name: e.target.value,
+                        })
                       }
                       placeholder="Ej. Cumplimiento de despacho"
                       required
@@ -1126,7 +1150,9 @@ export default function App() {
 
                   <div className="actions">
                     <button className="primary">
-                      {editingIndicatorId ? "Actualizar indicador" : "Crear indicador"}
+                      {editingIndicatorId
+                        ? "Actualizar indicador"
+                        : "Crear indicador"}
                     </button>
 
                     {editingIndicatorId && (
@@ -1166,9 +1192,27 @@ export default function App() {
                           <td>{item.name}</td>
                           <td>{item.process_name}</td>
                           <td>{item.unit}</td>
-                          <td>{formatRule(item.target_operator, item.target_value, item.unit)}</td>
-                          <td>{formatRule(item.warning_operator, item.warning_value, item.unit)}</td>
-                          <td>{formatRule(item.critical_operator, item.critical_value, item.unit)}</td>
+                          <td>
+                            {formatRule(
+                              item.target_operator,
+                              item.target_value,
+                              item.unit
+                            )}
+                          </td>
+                          <td>
+                            {formatRule(
+                              item.warning_operator,
+                              item.warning_value,
+                              item.unit
+                            )}
+                          </td>
+                          <td>
+                            {formatRule(
+                              item.critical_operator,
+                              item.critical_value,
+                              item.unit
+                            )}
+                          </td>
                           <td>{item.shifts}</td>
                           <td>
                             <div className="row-actions">
@@ -1211,7 +1255,10 @@ export default function App() {
               <div>
                 <div className="section-kicker">OPERACIÓN</div>
                 <h3>Captura diaria</h3>
-                <p>Registra por fecha y turno los resultados operativos por indicador.</p>
+                <p>
+                  Registra por fecha y turno los resultados operativos por
+                  indicador.
+                </p>
               </div>
             </div>
 
@@ -1225,7 +1272,10 @@ export default function App() {
                         type="date"
                         value={dailyForm.record_date}
                         onChange={(e) =>
-                          setDailyForm({ ...dailyForm, record_date: e.target.value })
+                          setDailyForm({
+                            ...dailyForm,
+                            record_date: e.target.value,
+                          })
                         }
                       />
                     </div>
@@ -1257,7 +1307,10 @@ export default function App() {
                     <select
                       value={dailyForm.indicator_id}
                       onChange={(e) =>
-                        setDailyForm({ ...dailyForm, indicator_id: e.target.value })
+                        setDailyForm({
+                          ...dailyForm,
+                          indicator_id: e.target.value,
+                        })
                       }
                       required
                     >
@@ -1356,7 +1409,10 @@ export default function App() {
                       rows="4"
                       value={dailyForm.observation}
                       onChange={(e) =>
-                        setDailyForm({ ...dailyForm, observation: e.target.value })
+                        setDailyForm({
+                          ...dailyForm,
+                          observation: e.target.value,
+                        })
                       }
                       placeholder="Detalle del día..."
                     />
@@ -1398,7 +1454,9 @@ export default function App() {
                           <td>{item.process_name}</td>
                           <td>{formatGeneral(item.general, item.unit)}</td>
                           <td>
-                            <span className={`status ${item.status}`}>{item.status}</span>
+                            <span className={`status ${item.status}`}>
+                              {item.status}
+                            </span>
                           </td>
                         </tr>
                       ))}
@@ -1447,7 +1505,10 @@ export default function App() {
                     type="number"
                     value={historyFilter.month}
                     onChange={(e) =>
-                      setHistoryFilter({ ...historyFilter, month: e.target.value })
+                      setHistoryFilter({
+                        ...historyFilter,
+                        month: e.target.value,
+                      })
                     }
                     placeholder="1-12"
                   />
@@ -1505,7 +1566,9 @@ export default function App() {
                   </div>
                   <div className="kpi-card elevated">
                     <span>Promedio general</span>
-                    <strong>{formatPercent(historySummary.average_general)}</strong>
+                    <strong>
+                      {formatPercent(historySummary.average_general)}
+                    </strong>
                   </div>
                   <div className="kpi-card elevated">
                     <span>OK</span>
@@ -1582,13 +1645,17 @@ export default function App() {
                       <tr key={item.id}>
                         <td>{item.record_date}</td>
                         <td>{item.process_name}</td>
-                        <td>{item.indicator_code} - {item.indicator_name}</td>
+                        <td>
+                          {item.indicator_code} - {item.indicator_name}
+                        </td>
                         <td>{item.shift_a ?? "-"}</td>
                         <td>{item.shift_b ?? "-"}</td>
                         <td>{item.shift_c ?? "-"}</td>
                         <td>{formatGeneral(item.general, item.unit)}</td>
                         <td>
-                          <span className={`status ${item.status}`}>{item.status}</span>
+                          <span className={`status ${item.status}`}>
+                            {item.status}
+                          </span>
                         </td>
                         <td>{item.observation || "-"}</td>
                       </tr>
@@ -1725,7 +1792,9 @@ export default function App() {
                 <section className="executive-kpi-grid clean-kpis">
                   <div className="executive-kpi blue-main">
                     <span>Promedio general</span>
-                    <strong>{formatPercent(dashboardOverview.summary.average_general)}</strong>
+                    <strong>
+                      {formatPercent(dashboardOverview.summary.average_general)}
+                    </strong>
                     <small>Consolidado de todos los procesos</small>
                   </div>
 
@@ -1765,8 +1834,14 @@ export default function App() {
                           margin={{ top: 10, right: 30, left: 30, bottom: 10 }}
                           barCategoryGap={28}
                         >
-                          <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
-                          <XAxis type="number" tickFormatter={(value) => `${value}%`} />
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke={CHART_COLORS.grid}
+                          />
+                          <XAxis
+                            type="number"
+                            tickFormatter={(value) => `${value}%`}
+                          />
                           <YAxis dataKey="name" type="category" width={140} />
                           <Tooltip formatter={(value) => formatPercent(value)} />
                           <Bar
@@ -1792,7 +1867,9 @@ export default function App() {
                   </section>
 
                   <section className="chart-card premium-chart-card donut-card">
-                    <div className="subsection-title">Distribución de estados</div>
+                    <div className="subsection-title">
+                      Distribución de estados
+                    </div>
                     <div className="chart-container executive-chart">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
@@ -1804,7 +1881,9 @@ export default function App() {
                             innerRadius={58}
                             paddingAngle={4}
                             cornerRadius={8}
-                            label={({ name, percentage }) => `${name}: ${percentage}%`}
+                            label={({ name, percentage }) =>
+                              `${name}: ${percentage}%`
+                            }
                           >
                             {dashboardPieData.map((entry, index) => (
                               <Cell
@@ -1825,12 +1904,19 @@ export default function App() {
                 </div>
 
                 <section className="dashboard-process-panel">
-                  <div className="subsection-title">Vista ejecutiva por proceso</div>
+                  <div className="subsection-title">
+                    Vista ejecutiva por proceso
+                  </div>
                   <div className="process-overview-grid compact-process-grid">
                     {dashboardOverview.process_cards.map((item, index) => (
-                      <div key={item.process_name} className="process-card executive-process-card clean-process-card">
+                      <div
+                        key={item.process_name}
+                        className="process-card executive-process-card clean-process-card"
+                      >
                         <div className="process-rank-chip">#{index + 1}</div>
-                        <div className="process-card-title">{item.process_name}</div>
+                        <div className="process-card-title">
+                          {item.process_name}
+                        </div>
                         <div className="process-card-value big-percent">
                           {formatPercent(item.average_general)}
                         </div>
@@ -1847,10 +1933,15 @@ export default function App() {
                   <div>
                     <div className="section-kicker">PROCESO SELECCIONADO</div>
                     <h2>{dashboardData.process.name}</h2>
-                    <p>Lectura ejecutiva del proceso con tendencia, comparativos y foco de impacto.</p>
+                    <p>
+                      Lectura ejecutiva del proceso con tendencia, comparativos
+                      y foco de impacto.
+                    </p>
                   </div>
                   <div className="focus-banner-side">
-                    <span className="status-pill">Nivel {dashboardData.process.level}</span>
+                    <span className="status-pill">
+                      Nivel {dashboardData.process.level}
+                    </span>
                     <span className="status-pill dark">Detalle ejecutivo</span>
                   </div>
                 </section>
@@ -1858,7 +1949,9 @@ export default function App() {
                 <section className="executive-kpi-grid clean-kpis">
                   <div className="executive-kpi blue-main">
                     <span>Promedio general</span>
-                    <strong>{formatPercent(dashboardData.summary.average_general)}</strong>
+                    <strong>
+                      {formatPercent(dashboardData.summary.average_general)}
+                    </strong>
                     <small>Resultado consolidado del proceso</small>
                   </div>
 
@@ -1892,8 +1985,14 @@ export default function App() {
                     <div className="subsection-title">Tendencia general</div>
                     <div className="chart-container executive-chart">
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={dashboardData.trend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
+                        <LineChart
+                          data={dashboardData.trend}
+                          margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                        >
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke={CHART_COLORS.grid}
+                          />
                           <XAxis dataKey="label" />
                           <YAxis tickFormatter={(value) => `${value}%`} />
                           <Tooltip formatter={(value) => formatPercent(value)} />
@@ -1923,7 +2022,9 @@ export default function App() {
                   </section>
 
                   <section className="chart-card premium-chart-card donut-card">
-                    <div className="subsection-title">Distribución del proceso</div>
+                    <div className="subsection-title">
+                      Distribución del proceso
+                    </div>
                     <div className="chart-container executive-chart">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
@@ -1935,7 +2036,9 @@ export default function App() {
                             innerRadius={56}
                             paddingAngle={4}
                             cornerRadius={8}
-                            label={({ name, percentage }) => `${name}: ${percentage}%`}
+                            label={({ name, percentage }) =>
+                              `${name}: ${percentage}%`
+                            }
                           >
                             {dashboardPieData.map((entry, index) => (
                               <Cell
@@ -1955,16 +2058,29 @@ export default function App() {
                   </section>
 
                   <section className="chart-card premium-chart-card full-span">
-                    <div className="subsection-title">Comparativo de indicadores</div>
+                    <div className="subsection-title">
+                      Comparativo de indicadores
+                    </div>
                     <div className="chart-container large-executive-chart">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={dashboardBarData} margin={{ top: 18, right: 18, left: 10, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
+                        <BarChart
+                          data={dashboardBarData}
+                          margin={{ top: 18, right: 18, left: 10, bottom: 0 }}
+                        >
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke={CHART_COLORS.grid}
+                          />
                           <XAxis dataKey="name" />
                           <YAxis tickFormatter={(value) => `${value}%`} />
                           <Tooltip formatter={(value) => formatPercent(value)} />
 
-                          <Bar dataKey="general" name="General" fill={CHART_COLORS.navy} radius={[8, 8, 0, 0]}>
+                          <Bar
+                            dataKey="general"
+                            name="General"
+                            fill={CHART_COLORS.navy}
+                            radius={[8, 8, 0, 0]}
+                          >
                             <LabelList
                               dataKey="general"
                               position="top"
@@ -1977,7 +2093,12 @@ export default function App() {
                             />
                           </Bar>
 
-                          <Bar dataKey="target" name="Meta" fill={CHART_COLORS.blue} radius={[8, 8, 0, 0]}>
+                          <Bar
+                            dataKey="target"
+                            name="Meta"
+                            fill={CHART_COLORS.blue}
+                            radius={[8, 8, 0, 0]}
+                          >
                             <LabelList
                               dataKey="target"
                               position="top"
@@ -1990,7 +2111,12 @@ export default function App() {
                             />
                           </Bar>
 
-                          <Bar dataKey="warning" name="Warning" fill={CHART_COLORS.blueSoft} radius={[8, 8, 0, 0]}>
+                          <Bar
+                            dataKey="warning"
+                            name="Warning"
+                            fill={CHART_COLORS.blueSoft}
+                            radius={[8, 8, 0, 0]}
+                          >
                             <LabelList
                               dataKey="warning"
                               position="top"
@@ -2003,7 +2129,12 @@ export default function App() {
                             />
                           </Bar>
 
-                          <Bar dataKey="critical" name="Critical" fill={CHART_COLORS.bluePale} radius={[8, 8, 0, 0]}>
+                          <Bar
+                            dataKey="critical"
+                            name="Critical"
+                            fill={CHART_COLORS.bluePale}
+                            radius={[8, 8, 0, 0]}
+                          >
                             <LabelList
                               dataKey="critical"
                               position="top"
@@ -2024,11 +2155,22 @@ export default function App() {
                     <div className="subsection-title">Pareto de impacto</div>
                     <div className="chart-container large-executive-chart">
                       <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart data={dashboardData.pareto} margin={{ top: 18, right: 18, left: 10, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
+                        <ComposedChart
+                          data={dashboardData.pareto}
+                          margin={{ top: 18, right: 18, left: 10, bottom: 0 }}
+                        >
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke={CHART_COLORS.grid}
+                          />
                           <XAxis dataKey="name" />
                           <YAxis yAxisId="left" />
-                          <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
+                          <YAxis
+                            yAxisId="right"
+                            orientation="right"
+                            domain={[0, 100]}
+                            tickFormatter={(value) => `${value}%`}
+                          />
                           <Tooltip />
 
                           <Bar
@@ -2062,7 +2204,9 @@ export default function App() {
                             <LabelList
                               dataKey="cumulative"
                               position="top"
-                              formatter={(value) => `${Number(value).toFixed(1)}%`}
+                              formatter={(value) =>
+                                `${Number(value).toFixed(1)}%`
+                              }
                               style={{
                                 fill: CHART_COLORS.text,
                                 fontWeight: 800,
@@ -2080,13 +2224,18 @@ export default function App() {
                   <div className="subsection-title">Monitoreo por indicador</div>
                   <div className="indicator-summary-grid">
                     {dashboardData.indicator_cards.map((item) => (
-                      <div key={item.indicator_id} className="indicator-summary-card clean-indicator-card">
+                      <div
+                        key={item.indicator_id}
+                        className="indicator-summary-card clean-indicator-card"
+                      >
                         <div className="indicator-card-head">
                           <div>
                             <div className="indicator-code">{item.code}</div>
                             <div className="indicator-name">{item.name}</div>
                           </div>
-                          <span className={`status ${item.status}`}>{item.status}</span>
+                          <span className={`status ${item.status}`}>
+                            {item.status}
+                          </span>
                         </div>
 
                         <div className="indicator-main-value">
@@ -2094,9 +2243,30 @@ export default function App() {
                         </div>
 
                         <div className="indicator-rules compact-rules">
-                          <div>Meta: {formatRule(item.target_operator, item.target_value, item.unit)}</div>
-                          <div>Warning: {formatRule(item.warning_operator, item.warning_value, item.unit)}</div>
-                          <div>Critical: {formatRule(item.critical_operator, item.critical_value, item.unit)}</div>
+                          <div>
+                            Meta:{" "}
+                            {formatRule(
+                              item.target_operator,
+                              item.target_value,
+                              item.unit
+                            )}
+                          </div>
+                          <div>
+                            Warning:{" "}
+                            {formatRule(
+                              item.warning_operator,
+                              item.warning_value,
+                              item.unit
+                            )}
+                          </div>
+                          <div>
+                            Critical:{" "}
+                            {formatRule(
+                              item.critical_operator,
+                              item.critical_value,
+                              item.unit
+                            )}
+                          </div>
                           <div>
                             Tendencia:{" "}
                             <strong>
@@ -2114,10 +2284,15 @@ export default function App() {
                 </section>
 
                 <section className="executive-section">
-                  <div className="subsection-title">Micro tendencias por indicador</div>
+                  <div className="subsection-title">
+                    Micro tendencias por indicador
+                  </div>
                   <div className="indicator-trend-grid">
                     {dashboardData.indicator_trends.map((item) => (
-                      <div key={item.indicator_id} className="indicator-trend-card clean-trend-card">
+                      <div
+                        key={item.indicator_id}
+                        className="indicator-trend-card clean-trend-card"
+                      >
                         <div className="indicator-trend-head">
                           <div>
                             <div className="indicator-code">{item.code}</div>
@@ -2139,10 +2314,15 @@ export default function App() {
                         <div className="mini-chart">
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={item.points}>
-                              <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                stroke={CHART_COLORS.grid}
+                              />
                               <XAxis dataKey="label" hide />
                               <YAxis hide />
-                              <Tooltip formatter={(value) => formatPercent(value)} />
+                              <Tooltip
+                                formatter={(value) => formatPercent(value)}
+                              />
                               <Line
                                 type="monotone"
                                 dataKey="value"
