@@ -68,10 +68,7 @@ const EMPTY_INDICATOR_FORM = {
 function ETOMark() {
   return (
     <div className="eto-logo-mark real-logo" aria-hidden="true">
-      <div className="eto-logo-core">E</div>
-      <div className="eto-logo-ring ring-1"></div>
-      <div className="eto-logo-ring ring-2"></div>
-      <div className="eto-logo-dot"></div>
+      <img src="/INOVA.jpeg" alt="ETO DIGITAL" className="eto-logo-image" />
     </div>
   );
 }
