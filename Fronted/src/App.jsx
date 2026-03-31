@@ -2273,8 +2273,8 @@ export default function App() {
                               {item.direction === "up"
                                 ? "Al alza"
                                 : item.direction === "down"
-                                ? "A la baja"
-                                : "Estable"}
+                                  ? "A la baja"
+                                  : "Estable"}
                             </strong>
                           </div>
                         </div>
@@ -2302,8 +2302,8 @@ export default function App() {
                             {item.direction === "up"
                               ? "Al alza"
                               : item.direction === "down"
-                              ? "A la baja"
-                              : "Estable"}
+                                ? "A la baja"
+                                : "Estable"}
                           </span>
                         </div>
 
