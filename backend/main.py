@@ -1,11 +1,13 @@
 from datetime import date, timedelta
-from typing import Optional
+from typing import Optional, List
 from collections import defaultdict
+import calendar
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import extract
+from pydantic import BaseModel
 
 from database import SessionLocal, engine, Base
 from models import Process, Indicator, DailyRecord
@@ -29,6 +31,19 @@ app.add_middleware(
 
 VALID_OPERATORS = [">", ">=", "<", "<=", "="]
 VALID_UNITS = ["%", "días", "horas", "unidades", "casos", "número"]
+
+
+class MonthlyRecordRow(BaseModel):
+    record_date: date
+    shift_a: Optional[float] = None
+    shift_b: Optional[float] = None
+    shift_c: Optional[float] = None
+    observation: Optional[str] = None
+
+
+class MonthlyRecordSave(BaseModel):
+    indicator_id: int
+    rows: List[MonthlyRecordRow]
 
 
 def get_db():
@@ -113,7 +128,15 @@ def base_history_query(db: Session):
     )
 
 
-def apply_common_filters(query, year=None, month=None, day=None, level=None, process_id=None):
+def apply_common_filters(
+    query,
+    year=None,
+    month=None,
+    day=None,
+    level=None,
+    process_id=None,
+    indicator_id=None
+):
     if year:
         query = query.filter(extract("year", DailyRecord.record_date) == year)
     if month:
@@ -124,6 +147,8 @@ def apply_common_filters(query, year=None, month=None, day=None, level=None, pro
         query = query.filter(Indicator.meeting_level == level)
     if process_id:
         query = query.filter(Indicator.process_id == process_id)
+    if indicator_id:
+        query = query.filter(DailyRecord.indicator_id == indicator_id)
     return query
 
 
@@ -444,6 +469,81 @@ def save_daily_record(payload: DailyRecordCreate, db: Session = Depends(get_db))
     )
 
 
+@app.put("/daily-records/{record_id}", response_model=DailyRecordOut)
+def update_daily_record(record_id: int, payload: DailyRecordCreate, db: Session = Depends(get_db)):
+    record = (
+        db.query(DailyRecord)
+        .options(joinedload(DailyRecord.indicator).joinedload(Indicator.process))
+        .filter(DailyRecord.id == record_id)
+        .first()
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+    indicator = (
+        db.query(Indicator)
+        .options(joinedload(Indicator.process))
+        .filter(Indicator.id == payload.indicator_id)
+        .first()
+    )
+    if not indicator:
+        raise HTTPException(status_code=404, detail="Indicador no encontrado")
+
+    duplicate = (
+        db.query(DailyRecord)
+        .filter(
+            DailyRecord.id != record_id,
+            DailyRecord.indicator_id == payload.indicator_id,
+            DailyRecord.record_date == payload.record_date
+        )
+        .first()
+    )
+    if duplicate:
+        raise HTTPException(
+            status_code=400,
+            detail="Ya existe otro registro para ese indicador en esa fecha"
+        )
+
+    general = calculate_general(
+        indicator,
+        payload.shift_a,
+        payload.shift_b,
+        payload.shift_c
+    )
+    record_status = calculate_status(indicator, general)
+
+    record.indicator_id = payload.indicator_id
+    record.record_date = payload.record_date
+    record.shift_a = payload.shift_a
+    record.shift_b = payload.shift_b
+    record.shift_c = payload.shift_c
+    record.general = general
+    record.status = record_status
+    record.observation = payload.observation
+
+    db.commit()
+    db.refresh(record)
+
+    record = (
+        db.query(DailyRecord)
+        .options(joinedload(DailyRecord.indicator).joinedload(Indicator.process))
+        .filter(DailyRecord.id == record_id)
+        .first()
+    )
+    return build_daily_record_out(record)
+
+
+@app.delete("/daily-records/{record_id}")
+def delete_daily_record(record_id: int, db: Session = Depends(get_db)):
+    record = db.query(DailyRecord).filter(DailyRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+    db.delete(record)
+    db.commit()
+    return {"message": "Registro eliminado correctamente"}
+
+
 @app.get("/daily-records/by-date", response_model=list[DailyRecordOut])
 def get_daily_by_date(
     record_date: date,
@@ -468,6 +568,131 @@ def get_daily_by_date(
     return [build_daily_record_out(r) for r in records]
 
 
+@app.get("/daily-records/month")
+def get_month_matrix(
+    year: int,
+    month: int,
+    indicator_id: int,
+    db: Session = Depends(get_db)
+):
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Mes no válido")
+
+    indicator = (
+        db.query(Indicator)
+        .options(joinedload(Indicator.process))
+        .filter(Indicator.id == indicator_id)
+        .first()
+    )
+    if not indicator:
+        raise HTTPException(status_code=404, detail="Indicador no encontrado")
+
+    total_days = calendar.monthrange(year, month)[1]
+    start_date = date(year, month, 1)
+    end_date = date(year, month, total_days)
+
+    existing_records = (
+        db.query(DailyRecord)
+        .filter(
+            DailyRecord.indicator_id == indicator_id,
+            DailyRecord.record_date >= start_date,
+            DailyRecord.record_date <= end_date
+        )
+        .order_by(DailyRecord.record_date.asc())
+        .all()
+    )
+
+    records_map = {r.record_date: r for r in existing_records}
+
+    result = []
+    for day_number in range(1, total_days + 1):
+        current_date = date(year, month, day_number)
+        existing = records_map.get(current_date)
+
+        result.append({
+            "record_date": current_date,
+            "shift_a": existing.shift_a if existing else None,
+            "shift_b": existing.shift_b if existing else None,
+            "shift_c": existing.shift_c if existing else None,
+            "observation": existing.observation if existing else "",
+        })
+
+    return {
+        "indicator_id": indicator.id,
+        "indicator_code": indicator.code,
+        "indicator_name": indicator.name,
+        "process_id": indicator.process.id,
+        "process_name": indicator.process.name,
+        "meeting_level": indicator.meeting_level,
+        "unit": indicator.unit,
+        "target_operator": indicator.target_operator,
+        "target_value": indicator.target_value,
+        "warning_operator": indicator.warning_operator,
+        "warning_value": indicator.warning_value,
+        "critical_operator": indicator.critical_operator,
+        "critical_value": indicator.critical_value,
+        "shifts": indicator.shifts,
+        "rows": result,
+    }
+
+
+@app.post("/daily-records/month")
+def save_month_matrix(payload: MonthlyRecordSave, db: Session = Depends(get_db)):
+    indicator = (
+        db.query(Indicator)
+        .options(joinedload(Indicator.process))
+        .filter(Indicator.id == payload.indicator_id)
+        .first()
+    )
+    if not indicator:
+        raise HTTPException(status_code=404, detail="Indicador no encontrado")
+
+    saved = 0
+
+    for row in payload.rows:
+        general = calculate_general(
+            indicator,
+            row.shift_a,
+            row.shift_b,
+            row.shift_c
+        )
+        record_status = calculate_status(indicator, general)
+
+        existing = (
+            db.query(DailyRecord)
+            .filter(
+                DailyRecord.indicator_id == payload.indicator_id,
+                DailyRecord.record_date == row.record_date
+            )
+            .first()
+        )
+
+        if existing:
+            existing.shift_a = row.shift_a
+            existing.shift_b = row.shift_b
+            existing.shift_c = row.shift_c
+            existing.general = general
+            existing.status = record_status
+            existing.observation = row.observation
+        else:
+            new_record = DailyRecord(
+                indicator_id=payload.indicator_id,
+                record_date=row.record_date,
+                shift_a=row.shift_a,
+                shift_b=row.shift_b,
+                shift_c=row.shift_c,
+                general=general,
+                status=record_status,
+                observation=row.observation,
+            )
+            db.add(new_record)
+
+        saved += 1
+
+    db.commit()
+    return {"message": "Carga masiva guardada correctamente", "saved_rows": saved}
+
+
 @app.get("/history", response_model=list[DailyRecordOut])
 def get_history(
     year: Optional[int] = None,
@@ -475,10 +700,11 @@ def get_history(
     day: Optional[int] = None,
     level: Optional[int] = None,
     process_id: Optional[int] = None,
+    indicator_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     query = base_history_query(db)
-    query = apply_common_filters(query, year, month, day, level, process_id)
+    query = apply_common_filters(query, year, month, day, level, process_id, indicator_id)
     records = query.order_by(DailyRecord.record_date.desc(), Indicator.code.asc()).all()
     return [build_daily_record_out(r) for r in records]
 
@@ -493,10 +719,11 @@ def get_history_summary(
     day: Optional[int] = None,
     level: Optional[int] = None,
     process_id: Optional[int] = None,
+    indicator_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     query = base_history_query(db)
-    query = apply_common_filters(query, year, month, day, level, process_id)
+    query = apply_common_filters(query, year, month, day, level, process_id, indicator_id)
     records = query.all()
 
     if not records:
@@ -555,7 +782,7 @@ def get_dashboard_overview(
     db: Session = Depends(get_db)
 ):
     query = base_history_query(db)
-    query = apply_common_filters(query, year, month, day, level, None)
+    query = apply_common_filters(query, year, month, day, level, None, None)
     records = query.order_by(DailyRecord.record_date.asc()).all()
 
     if not records:
@@ -639,7 +866,7 @@ def get_process_dashboard(
         raise HTTPException(status_code=404, detail="Proceso no encontrado")
 
     query = base_history_query(db)
-    query = apply_common_filters(query, year, month, day, level, process_id)
+    query = apply_common_filters(query, year, month, day, level, process_id, None)
 
     if period and not any([year, month, day]):
         start_date, end_date = get_period_dates(period)

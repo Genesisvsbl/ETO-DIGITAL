@@ -75,6 +75,17 @@ const API = {
       body: JSON.stringify(payload),
     }),
 
+  updateDailyRecord: (id, payload) =>
+    request(`/daily-records/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
+  deleteDailyRecord: (id) =>
+    request(`/daily-records/${id}`, {
+      method: "DELETE",
+    }),
+
   getDailyByDate: ({ record_date, process_id, level }) => {
     const query = new URLSearchParams();
     query.append("record_date", record_date);
@@ -83,23 +94,42 @@ const API = {
     return request(`/daily-records/by-date?${query.toString()}`);
   },
 
-  getHistory: ({ year, month, day, level, process_id }) => {
+  getMonthMatrix: ({ year, month, indicator_id }) => {
+    const query = new URLSearchParams();
+    query.append("year", year);
+    query.append("month", month);
+    query.append("indicator_id", indicator_id);
+    return request(`/daily-records/month?${query.toString()}`);
+  },
+
+  saveMonthMatrix: ({ indicator_id, rows }) =>
+    request("/daily-records/month", {
+      method: "POST",
+      body: JSON.stringify({
+        indicator_id,
+        rows,
+      }),
+    }),
+
+  getHistory: ({ year, month, day, level, process_id, indicator_id }) => {
     const query = new URLSearchParams();
     if (year) query.append("year", year);
     if (month) query.append("month", month);
     if (day) query.append("day", day);
     if (level) query.append("level", level);
     if (process_id) query.append("process_id", process_id);
+    if (indicator_id) query.append("indicator_id", indicator_id);
     return request(`/history?${query.toString()}`);
   },
 
-  getHistorySummary: ({ year, month, day, level, process_id }) => {
+  getHistorySummary: ({ year, month, day, level, process_id, indicator_id }) => {
     const query = new URLSearchParams();
     if (year) query.append("year", year);
     if (month) query.append("month", month);
     if (day) query.append("day", day);
     if (level) query.append("level", level);
     if (process_id) query.append("process_id", process_id);
+    if (indicator_id) query.append("indicator_id", indicator_id);
     return request(`/history/summary?${query.toString()}`);
   },
 

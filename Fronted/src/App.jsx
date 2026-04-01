@@ -101,6 +101,12 @@ function formatPlainNumber(value) {
   return Number(value || 0).toFixed(2);
 }
 
+function formatDateInput(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value.slice(0, 10);
+  return new Date(value).toISOString().slice(0, 10);
+}
+
 export default function App() {
   const [tab, setTab] = useState("portal");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -124,6 +130,7 @@ export default function App() {
 
   const [editingProcessId, setEditingProcessId] = useState(null);
   const [editingIndicatorId, setEditingIndicatorId] = useState(null);
+  const [editingDailyId, setEditingDailyId] = useState(null);
 
   const [processForm, setProcessForm] = useState(EMPTY_PROCESS_FORM);
   const [indicatorForm, setIndicatorForm] = useState(EMPTY_INDICATOR_FORM);
@@ -144,7 +151,11 @@ export default function App() {
     day: "",
     level: "",
     process_id: "",
+    indicator_id: "",
   });
+
+  const [monthMatrixMeta, setMonthMatrixMeta] = useState(null);
+  const [monthMatrixRows, setMonthMatrixRows] = useState([]);
 
   const [dashboardFilter, setDashboardFilter] = useState({
     process_id: "",
@@ -224,6 +235,19 @@ export default function App() {
     setEditingIndicatorId(null);
   }
 
+  function resetDailyForm() {
+    setEditingDailyId(null);
+    setDailyForm({
+      record_date: new Date().toISOString().slice(0, 10),
+      process_id: "",
+      indicator_id: "",
+      shift_a: "",
+      shift_b: "",
+      shift_c: "",
+      observation: "",
+    });
+  }
+
   function handleAccessSubmit(e) {
     e.preventDefault();
 
@@ -255,6 +279,9 @@ export default function App() {
     setHistorySummary(null);
     setDashboardOverview(null);
     setDashboardData(null);
+    setEditingDailyId(null);
+    setMonthMatrixMeta(null);
+    setMonthMatrixRows([]);
   }
 
   async function handleCreateProcess(e) {
@@ -394,17 +421,27 @@ export default function App() {
     e.preventDefault();
     try {
       setLoading(true);
-      await API.saveDailyRecord({
+
+      const payload = {
         indicator_id: Number(dailyForm.indicator_id),
         record_date: dailyForm.record_date,
         shift_a: dailyForm.shift_a === "" ? null : Number(dailyForm.shift_a),
         shift_b: dailyForm.shift_b === "" ? null : Number(dailyForm.shift_b),
         shift_c: dailyForm.shift_c === "" ? null : Number(dailyForm.shift_c),
         observation: dailyForm.observation,
-      });
+      };
 
-      clearMessageSoon("Captura diaria guardada correctamente");
+      if (editingDailyId) {
+        await API.updateDailyRecord(editingDailyId, payload);
+        clearMessageSoon("Registro actualizado correctamente");
+        setEditingDailyId(null);
+      } else {
+        await API.saveDailyRecord(payload);
+        clearMessageSoon("Captura diaria guardada correctamente");
+      }
+
       await handleSearchDaily();
+      await loadBaseData();
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -428,12 +465,11 @@ export default function App() {
     }
   }
 
-  async function handleSearchHistory(e) {
-    e.preventDefault();
+  async function runHistorySearch(customFilters = null) {
     try {
       setLoading(true);
       const filters = {
-        ...historyFilter,
+        ...(customFilters || historyFilter),
         level: Number(accessLevel),
       };
       const [historyData, summaryData] = await Promise.all([
@@ -447,6 +483,11 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSearchHistory(e) {
+    e.preventDefault();
+    await runHistorySearch();
   }
 
   async function handleLoadDashboard(e) {
@@ -475,12 +516,121 @@ export default function App() {
     }
   }
 
+  async function handleDeleteHistory(item) {
+    const ok = window.confirm(
+      `¿Deseas eliminar el registro del indicador "${item.indicator_code} - ${item.indicator_name}" del día ${item.record_date}?`
+    );
+    if (!ok) return;
+
+    try {
+      setLoading(true);
+      await API.deleteDailyRecord(item.id);
+      clearMessageSoon("Registro eliminado correctamente");
+      await runHistorySearch();
+      if (dailyForm.record_date === formatDateInput(item.record_date)) {
+        await handleSearchDaily();
+      }
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleEditHistory(item) {
+    setEditingDailyId(item.id);
+    setTab("daily");
+    setDailyForm({
+      record_date: formatDateInput(item.record_date),
+      process_id: String(item.process_id || ""),
+      indicator_id: String(item.indicator_id || ""),
+      shift_a: item.shift_a ?? "",
+      shift_b: item.shift_b ?? "",
+      shift_c: item.shift_c ?? "",
+      observation: item.observation || "",
+    });
+    closeMobileSidebar();
+    clearMessageSoon("Registro cargado para edición");
+  }
+
+  async function handleLoadMonthMatrix() {
+    try {
+      if (!historyFilter.year || !historyFilter.month || !historyFilter.indicator_id) {
+        setMessage("Debes seleccionar año, mes e indicador para carga masiva.");
+        return;
+      }
+
+      setLoading(true);
+      const data = await API.getMonthMatrix({
+        year: Number(historyFilter.year),
+        month: Number(historyFilter.month),
+        indicator_id: Number(historyFilter.indicator_id),
+      });
+      setMonthMatrixMeta(data);
+      setMonthMatrixRows(
+        (data.rows || []).map((row) => ({
+          ...row,
+          record_date: formatDateInput(row.record_date),
+          shift_a: row.shift_a ?? "",
+          shift_b: row.shift_b ?? "",
+          shift_c: row.shift_c ?? "",
+          observation: row.observation || "",
+        }))
+      );
+      clearMessageSoon("Matriz mensual cargada correctamente");
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSaveMonthMatrix() {
+    try {
+      if (!historyFilter.indicator_id || !monthMatrixRows.length) {
+        setMessage("No hay matriz mensual cargada para guardar.");
+        return;
+      }
+
+      setLoading(true);
+      await API.saveMonthMatrix({
+        indicator_id: Number(historyFilter.indicator_id),
+        rows: monthMatrixRows.map((row) => ({
+          record_date: row.record_date,
+          shift_a: row.shift_a === "" ? null : Number(row.shift_a),
+          shift_b: row.shift_b === "" ? null : Number(row.shift_b),
+          shift_c: row.shift_c === "" ? null : Number(row.shift_c),
+          observation: row.observation || "",
+        })),
+      });
+      clearMessageSoon("Carga masiva guardada correctamente");
+      await runHistorySearch();
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function updateMonthMatrixRow(index, field, value) {
+    setMonthMatrixRows((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+    );
+  }
+
   const filteredIndicatorsForDaily = useMemo(() => {
     if (!dailyForm.process_id) return [];
     return indicators.filter(
       (item) => String(item.process_id) === String(dailyForm.process_id)
     );
   }, [dailyForm.process_id, indicators]);
+
+  const filteredIndicatorsForHistory = useMemo(() => {
+    if (!historyFilter.process_id) return indicators;
+    return indicators.filter(
+      (item) => String(item.process_id) === String(historyFilter.process_id)
+    );
+  }, [historyFilter.process_id, indicators]);
 
   const selectedIndicator = useMemo(() => {
     return indicators.find(
@@ -1254,7 +1404,9 @@ export default function App() {
             <div className="card-header-block">
               <div>
                 <div className="section-kicker">OPERACIÓN</div>
-                <h3>Captura diaria</h3>
+                <h3>
+                  {editingDailyId ? "Editar captura diaria" : "Captura diaria"}
+                </h3>
                 <p>
                   Registra por fecha y turno los resultados operativos por
                   indicador.
@@ -1419,7 +1571,9 @@ export default function App() {
                   </div>
 
                   <div className="actions">
-                    <button className="primary">Guardar captura</button>
+                    <button className="primary">
+                      {editingDailyId ? "Actualizar captura" : "Guardar captura"}
+                    </button>
                     <button
                       type="button"
                       className="secondary"
@@ -1427,6 +1581,15 @@ export default function App() {
                     >
                       Consultar día
                     </button>
+                    {editingDailyId && (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={resetDailyForm}
+                      >
+                        Cancelar edición
+                      </button>
+                    )}
                   </div>
                 </form>
               </div>
@@ -1481,12 +1644,15 @@ export default function App() {
               <div>
                 <div className="section-kicker">CONSULTA</div>
                 <h3>Histórico y consolidado por proceso</h3>
-                <p>Consulta detalle histórico y resumen general según filtros.</p>
+                <p>
+                  Consulta detalle histórico, filtra por indicador y usa carga
+                  masiva por mes.
+                </p>
               </div>
             </div>
 
             <form onSubmit={handleSearchHistory} className="filters-card">
-              <div className="inline-form-grid five-cols">
+              <div className="inline-form-grid" style={{ gridTemplateColumns: "repeat(6, minmax(0, 1fr))" }}>
                 <div className="field">
                   <label>Año</label>
                   <input
@@ -1539,6 +1705,7 @@ export default function App() {
                       setHistoryFilter({
                         ...historyFilter,
                         process_id: e.target.value,
+                        indicator_id: "",
                       })
                     }
                   >
@@ -1550,12 +1717,150 @@ export default function App() {
                     ))}
                   </select>
                 </div>
+
+                <div className="field">
+                  <label>Indicador</label>
+                  <select
+                    value={historyFilter.indicator_id}
+                    onChange={(e) =>
+                      setHistoryFilter({
+                        ...historyFilter,
+                        indicator_id: e.target.value,
+                      })
+                    }
+                  >
+                    <option value="">Todos</option>
+                    {filteredIndicatorsForHistory.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.code} - {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="actions top-space">
                 <button className="primary">Consultar histórico</button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={handleLoadMonthMatrix}
+                >
+                  Cargar mes
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={handleSaveMonthMatrix}
+                >
+                  Guardar todo el mes
+                </button>
               </div>
             </form>
+
+            {monthMatrixMeta && (
+              <section className="panel-block">
+                <div className="subsection-title">
+                  Carga masiva mensual - {monthMatrixMeta.indicator_code} -{" "}
+                  {monthMatrixMeta.indicator_name}
+                </div>
+
+                <div className="rule-preview compact" style={{ marginBottom: 14 }}>
+                  <div className="rule-item">
+                    <span>Proceso</span>
+                    <strong>{monthMatrixMeta.process_name}</strong>
+                  </div>
+                  <div className="rule-item">
+                    <span>Unidad</span>
+                    <strong>{monthMatrixMeta.unit}</strong>
+                  </div>
+                  <div className="rule-item">
+                    <span>Meta</span>
+                    <strong>
+                      {formatRule(
+                        monthMatrixMeta.target_operator,
+                        monthMatrixMeta.target_value,
+                        monthMatrixMeta.unit
+                      )}
+                    </strong>
+                  </div>
+                  <div className="rule-item">
+                    <span>Turnos</span>
+                    <strong>{monthMatrixMeta.shifts}</strong>
+                  </div>
+                </div>
+
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Turno A</th>
+                        <th>Turno B</th>
+                        <th>Turno C</th>
+                        <th>Observación</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthMatrixRows.map((row, index) => (
+                        <tr key={row.record_date}>
+                          <td>{row.record_date}</td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={row.shift_a}
+                              onChange={(e) =>
+                                updateMonthMatrixRow(index, "shift_a", e.target.value)
+                              }
+                              disabled={!monthMatrixMeta.shifts.includes("A")}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={row.shift_b}
+                              onChange={(e) =>
+                                updateMonthMatrixRow(index, "shift_b", e.target.value)
+                              }
+                              disabled={!monthMatrixMeta.shifts.includes("B")}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={row.shift_c}
+                              onChange={(e) =>
+                                updateMonthMatrixRow(index, "shift_c", e.target.value)
+                              }
+                              disabled={!monthMatrixMeta.shifts.includes("C")}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              value={row.observation}
+                              onChange={(e) =>
+                                updateMonthMatrixRow(index, "observation", e.target.value)
+                              }
+                              placeholder="Observación del día"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                      {!monthMatrixRows.length && (
+                        <tr>
+                          <td colSpan="5" className="empty">
+                            Sin filas para el mes seleccionado
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
 
             {historySummary && (
               <>
@@ -1638,6 +1943,7 @@ export default function App() {
                       <th>General</th>
                       <th>Estado</th>
                       <th>Obs.</th>
+                      <th className="actions-col">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1658,11 +1964,29 @@ export default function App() {
                           </span>
                         </td>
                         <td>{item.observation || "-"}</td>
+                        <td>
+                          <div className="row-actions">
+                            <button
+                              type="button"
+                              className="table-btn edit"
+                              onClick={() => handleEditHistory(item)}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              className="table-btn delete"
+                              onClick={() => handleDeleteHistory(item)}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                     {!historyResults.length && (
                       <tr>
-                        <td colSpan="9" className="empty">
+                        <td colSpan="10" className="empty">
                           Sin resultados
                         </td>
                       </tr>
