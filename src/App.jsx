@@ -555,7 +555,11 @@ export default function App() {
 
   async function handleLoadMonthMatrix() {
     try {
-      if (!historyFilter.year || !historyFilter.month || !historyFilter.indicator_id) {
+      if (
+        !historyFilter.year ||
+        !historyFilter.month ||
+        !historyFilter.indicator_id
+      ) {
         setMessage("Debes seleccionar año, mes e indicador para carga masiva.");
         return;
       }
@@ -593,6 +597,7 @@ export default function App() {
       }
 
       setLoading(true);
+
       await API.saveMonthMatrix({
         indicator_id: Number(historyFilter.indicator_id),
         rows: monthMatrixRows.map((row) => ({
@@ -603,7 +608,12 @@ export default function App() {
           observation: row.observation || "",
         })),
       });
+
       clearMessageSoon("Carga masiva guardada correctamente");
+
+      setMonthMatrixMeta(null);
+      setMonthMatrixRows([]);
+
       await runHistorySearch();
     } catch (err) {
       setMessage(err.message);
@@ -1652,14 +1662,20 @@ export default function App() {
             </div>
 
             <form onSubmit={handleSearchHistory} className="filters-card">
-              <div className="inline-form-grid" style={{ gridTemplateColumns: "repeat(6, minmax(0, 1fr))" }}>
+              <div
+                className="inline-form-grid"
+                style={{ gridTemplateColumns: "repeat(6, minmax(0, 1fr))" }}
+              >
                 <div className="field">
                   <label>Año</label>
                   <input
                     type="number"
                     value={historyFilter.year}
                     onChange={(e) =>
-                      setHistoryFilter({ ...historyFilter, year: e.target.value })
+                      setHistoryFilter({
+                        ...historyFilter,
+                        year: e.target.value,
+                      })
                     }
                     placeholder="2026"
                   />
@@ -1765,7 +1781,10 @@ export default function App() {
                   {monthMatrixMeta.indicator_name}
                 </div>
 
-                <div className="rule-preview compact" style={{ marginBottom: 14 }}>
+                <div
+                  className="rule-preview compact"
+                  style={{ marginBottom: 14 }}
+                >
                   <div className="rule-item">
                     <span>Proceso</span>
                     <strong>{monthMatrixMeta.process_name}</strong>
@@ -1811,7 +1830,11 @@ export default function App() {
                               step="0.01"
                               value={row.shift_a}
                               onChange={(e) =>
-                                updateMonthMatrixRow(index, "shift_a", e.target.value)
+                                updateMonthMatrixRow(
+                                  index,
+                                  "shift_a",
+                                  e.target.value
+                                )
                               }
                               disabled={!monthMatrixMeta.shifts.includes("A")}
                             />
@@ -1822,7 +1845,11 @@ export default function App() {
                               step="0.01"
                               value={row.shift_b}
                               onChange={(e) =>
-                                updateMonthMatrixRow(index, "shift_b", e.target.value)
+                                updateMonthMatrixRow(
+                                  index,
+                                  "shift_b",
+                                  e.target.value
+                                )
                               }
                               disabled={!monthMatrixMeta.shifts.includes("B")}
                             />
@@ -1833,7 +1860,11 @@ export default function App() {
                               step="0.01"
                               value={row.shift_c}
                               onChange={(e) =>
-                                updateMonthMatrixRow(index, "shift_c", e.target.value)
+                                updateMonthMatrixRow(
+                                  index,
+                                  "shift_c",
+                                  e.target.value
+                                )
                               }
                               disabled={!monthMatrixMeta.shifts.includes("C")}
                             />
@@ -1842,7 +1873,11 @@ export default function App() {
                             <input
                               value={row.observation}
                               onChange={(e) =>
-                                updateMonthMatrixRow(index, "observation", e.target.value)
+                                updateMonthMatrixRow(
+                                  index,
+                                  "observation",
+                                  e.target.value
+                                )
                               }
                               placeholder="Observación del día"
                             />
