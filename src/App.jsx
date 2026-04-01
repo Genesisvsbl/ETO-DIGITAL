@@ -107,6 +107,16 @@ function formatDateInput(value) {
   return new Date(value).toISOString().slice(0, 10);
 }
 
+function formatShortDate(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("es-CO", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+}
+
 export default function App() {
   const [tab, setTab] = useState("portal");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -159,6 +169,7 @@ export default function App() {
 
   const [dashboardFilter, setDashboardFilter] = useState({
     process_id: "",
+    indicator_id: "",
     year: new Date().getFullYear(),
     month: "",
     day: "",
@@ -610,10 +621,8 @@ export default function App() {
       });
 
       clearMessageSoon("Carga masiva guardada correctamente");
-
       setMonthMatrixMeta(null);
       setMonthMatrixRows([]);
-
       await runHistorySearch();
     } catch (err) {
       setMessage(err.message);
@@ -641,6 +650,13 @@ export default function App() {
       (item) => String(item.process_id) === String(historyFilter.process_id)
     );
   }, [historyFilter.process_id, indicators]);
+
+  const filteredIndicatorsForDashboard = useMemo(() => {
+    if (!dashboardFilter.process_id) return [];
+    return indicators.filter(
+      (item) => String(item.process_id) === String(dashboardFilter.process_id)
+    );
+  }, [dashboardFilter.process_id, indicators]);
 
   const selectedIndicator = useMemo(() => {
     return indicators.find(
@@ -687,12 +703,9 @@ export default function App() {
   const dashboardBarData = useMemo(() => {
     if (!dashboardData?.indicator_cards?.length) return [];
     return dashboardData.indicator_cards.map((item) => ({
-      name: formatCompactName(item.name, 18),
-      fullName: item.name,
+      name: formatCompactName(item.code, 16),
+      fullName: `${item.code} - ${item.name}`,
       general: item.general,
-      target: item.target_value,
-      warning: item.warning_value,
-      critical: item.critical_value,
     }));
   }, [dashboardData]);
 
@@ -1771,6 +1784,18 @@ export default function App() {
                 >
                   Guardar todo el mes
                 </button>
+                {monthMatrixMeta && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => {
+                      setMonthMatrixMeta(null);
+                      setMonthMatrixRows([]);
+                    }}
+                  >
+                    Cerrar carga mensual
+                  </button>
+                )}
               </div>
             </form>
 
@@ -2057,6 +2082,7 @@ export default function App() {
                       setDashboardFilter({
                         ...dashboardFilter,
                         process_id: e.target.value,
+                        indicator_id: "",
                       })
                     }
                   >
@@ -2064,6 +2090,27 @@ export default function App() {
                     {processes.map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label>Indicador</label>
+                  <select
+                    value={dashboardFilter.indicator_id}
+                    onChange={(e) =>
+                      setDashboardFilter({
+                        ...dashboardFilter,
+                        indicator_id: e.target.value,
+                      })
+                    }
+                    disabled={!dashboardFilter.process_id}
+                  >
+                    <option value="">Todos los indicadores</option>
+                    {filteredIndicatorsForDashboard.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.code} - {item.name}
                       </option>
                     ))}
                   </select>
@@ -2345,16 +2392,31 @@ export default function App() {
                     <div className="chart-container executive-chart">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart
-                          data={dashboardData.trend}
-                          margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                          data={dashboardData.trend.map((item) => ({
+                            ...item,
+                            shortLabel: formatShortDate(item.label),
+                          }))}
+                          margin={{ top: 10, right: 20, left: 0, bottom: 70 }}
                         >
                           <CartesianGrid
                             strokeDasharray="3 3"
                             stroke={CHART_COLORS.grid}
                           />
-                          <XAxis dataKey="label" />
+                          <XAxis
+                            dataKey="shortLabel"
+                            interval={0}
+                            angle={-45}
+                            textAnchor="end"
+                            height={70}
+                            tick={{ fontSize: 11 }}
+                          />
                           <YAxis tickFormatter={(value) => `${value}%`} />
-                          <Tooltip formatter={(value) => formatPercent(value)} />
+                          <Tooltip
+                            formatter={(value) => formatPercent(value)}
+                            labelFormatter={(label, payload) =>
+                              payload?.[0]?.payload?.label || label
+                            }
+                          />
                           <Line
                             type="monotone"
                             dataKey="value"
@@ -2363,18 +2425,7 @@ export default function App() {
                             strokeWidth={3}
                             dot={{ r: 4, fill: CHART_COLORS.navy }}
                             activeDot={{ r: 6 }}
-                          >
-                            <LabelList
-                              dataKey="value"
-                              position="top"
-                              formatter={(value) => formatPercent(value)}
-                              style={{
-                                fill: CHART_COLORS.text,
-                                fontWeight: 800,
-                                fontSize: 11,
-                              }}
-                            />
-                          </Line>
+                          />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
@@ -2424,19 +2475,30 @@ export default function App() {
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart
                           data={dashboardBarData}
-                          margin={{ top: 18, right: 18, left: 10, bottom: 0 }}
+                          margin={{ top: 18, right: 18, left: 10, bottom: 50 }}
                         >
                           <CartesianGrid
                             strokeDasharray="3 3"
                             stroke={CHART_COLORS.grid}
                           />
-                          <XAxis dataKey="name" />
+                          <XAxis
+                            dataKey="name"
+                            interval={0}
+                            angle={-20}
+                            textAnchor="end"
+                            height={60}
+                          />
                           <YAxis tickFormatter={(value) => `${value}%`} />
-                          <Tooltip formatter={(value) => formatPercent(value)} />
+                          <Tooltip
+                            formatter={(value) => formatPercent(value)}
+                            labelFormatter={(label, payload) =>
+                              payload?.[0]?.payload?.fullName || label
+                            }
+                          />
 
                           <Bar
                             dataKey="general"
-                            name="General"
+                            name="Resultado"
                             fill={CHART_COLORS.navy}
                             radius={[8, 8, 0, 0]}
                           >
@@ -2451,60 +2513,6 @@ export default function App() {
                               }}
                             />
                           </Bar>
-
-                          <Bar
-                            dataKey="target"
-                            name="Meta"
-                            fill={CHART_COLORS.blue}
-                            radius={[8, 8, 0, 0]}
-                          >
-                            <LabelList
-                              dataKey="target"
-                              position="top"
-                              formatter={(value) => formatPercent(value)}
-                              style={{
-                                fill: CHART_COLORS.text,
-                                fontWeight: 700,
-                                fontSize: 10,
-                              }}
-                            />
-                          </Bar>
-
-                          <Bar
-                            dataKey="warning"
-                            name="Warning"
-                            fill={CHART_COLORS.blueSoft}
-                            radius={[8, 8, 0, 0]}
-                          >
-                            <LabelList
-                              dataKey="warning"
-                              position="top"
-                              formatter={(value) => formatPercent(value)}
-                              style={{
-                                fill: CHART_COLORS.text,
-                                fontWeight: 700,
-                                fontSize: 10,
-                              }}
-                            />
-                          </Bar>
-
-                          <Bar
-                            dataKey="critical"
-                            name="Critical"
-                            fill={CHART_COLORS.bluePale}
-                            radius={[8, 8, 0, 0]}
-                          >
-                            <LabelList
-                              dataKey="critical"
-                              position="top"
-                              formatter={(value) => formatPercent(value)}
-                              style={{
-                                fill: CHART_COLORS.text,
-                                fontWeight: 700,
-                                fontSize: 10,
-                              }}
-                            />
-                          </Bar>
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -2515,14 +2523,23 @@ export default function App() {
                     <div className="chart-container large-executive-chart">
                       <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart
-                          data={dashboardData.pareto}
-                          margin={{ top: 18, right: 18, left: 10, bottom: 0 }}
+                          data={dashboardData.pareto.map((item) => ({
+                            ...item,
+                            shortName: formatCompactName(item.name, 24),
+                          }))}
+                          margin={{ top: 18, right: 18, left: 10, bottom: 50 }}
                         >
                           <CartesianGrid
                             strokeDasharray="3 3"
                             stroke={CHART_COLORS.grid}
                           />
-                          <XAxis dataKey="name" />
+                          <XAxis
+                            dataKey="shortName"
+                            interval={0}
+                            angle={-20}
+                            textAnchor="end"
+                            height={60}
+                          />
                           <YAxis yAxisId="left" />
                           <YAxis
                             yAxisId="right"
@@ -2530,7 +2547,17 @@ export default function App() {
                             domain={[0, 100]}
                             tickFormatter={(value) => `${value}%`}
                           />
-                          <Tooltip />
+                          <Tooltip
+                            formatter={(value, name) => {
+                              if (name === "% Acumulado") {
+                                return `${Number(value).toFixed(1)}%`;
+                              }
+                              return formatPlainNumber(value);
+                            }}
+                            labelFormatter={(label, payload) =>
+                              payload?.[0]?.payload?.name || label
+                            }
+                          />
 
                           <Bar
                             yAxisId="left"
@@ -2632,8 +2659,8 @@ export default function App() {
                               {item.direction === "up"
                                 ? "Al alza"
                                 : item.direction === "down"
-                                  ? "A la baja"
-                                  : "Estable"}
+                                ? "A la baja"
+                                : "Estable"}
                             </strong>
                           </div>
                         </div>
@@ -2661,8 +2688,8 @@ export default function App() {
                             {item.direction === "up"
                               ? "Al alza"
                               : item.direction === "down"
-                                ? "A la baja"
-                                : "Estable"}
+                              ? "A la baja"
+                              : "Estable"}
                           </span>
                         </div>
 

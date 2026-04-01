@@ -122,7 +122,14 @@ const API = {
     return request(`/history?${query.toString()}`);
   },
 
-  getHistorySummary: ({ year, month, day, level, process_id, indicator_id }) => {
+  getHistorySummary: ({
+    year,
+    month,
+    day,
+    level,
+    process_id,
+    indicator_id,
+  }) => {
     const query = new URLSearchParams();
     if (year) query.append("year", year);
     if (month) query.append("month", month);
@@ -142,9 +149,18 @@ const API = {
     return request(`/dashboard/overview?${query.toString()}`);
   },
 
-  getProcessDashboard: ({ process_id, year, month, day, level, period }) => {
+  getProcessDashboard: ({
+    process_id,
+    indicator_id,
+    year,
+    month,
+    day,
+    level,
+    period,
+  }) => {
     const query = new URLSearchParams();
     query.append("process_id", process_id);
+    if (indicator_id) query.append("indicator_id", indicator_id);
     if (year) query.append("year", year);
     if (month) query.append("month", month);
     if (day) query.append("day", day);
