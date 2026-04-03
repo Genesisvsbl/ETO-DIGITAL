@@ -62,6 +62,8 @@ const EMPTY_INDICATOR_FORM = {
   warning_value: "",
   critical_operator: "<",
   critical_value: "",
+  frequency: "day",
+  capture_mode: "shifts",
   shifts: ["A", "B", "C"],
 };
 
@@ -117,6 +119,19 @@ function formatShortDate(value) {
   });
 }
 
+function formatFrequencyLabel(value) {
+  if (value === "day") return "Diaria";
+  if (value === "week") return "Semanal";
+  if (value === "month") return "Mensual";
+  return value || "-";
+}
+
+function formatCaptureModeLabel(value) {
+  if (value === "single") return "Único";
+  if (value === "shifts") return "Turnos";
+  return value || "-";
+}
+
 export default function App() {
   const [tab, setTab] = useState("portal");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -149,6 +164,7 @@ export default function App() {
     record_date: new Date().toISOString().slice(0, 10),
     process_id: "",
     indicator_id: "",
+    single_value: "",
     shift_a: "",
     shift_b: "",
     shift_c: "",
@@ -252,6 +268,7 @@ export default function App() {
       record_date: new Date().toISOString().slice(0, 10),
       process_id: "",
       indicator_id: "",
+      single_value: "",
       shift_a: "",
       shift_b: "",
       shift_c: "",
@@ -367,7 +384,10 @@ export default function App() {
         warning_value: Number(indicatorForm.warning_value),
         critical_operator: indicatorForm.critical_operator,
         critical_value: Number(indicatorForm.critical_value),
-        shifts: indicatorForm.shifts,
+        frequency: indicatorForm.frequency,
+        capture_mode: indicatorForm.capture_mode,
+        shifts:
+          indicatorForm.capture_mode === "single" ? [] : indicatorForm.shifts,
       };
 
       if (editingIndicatorId) {
@@ -401,10 +421,14 @@ export default function App() {
       warning_value: item.warning_value,
       critical_operator: item.critical_operator,
       critical_value: item.critical_value,
+      frequency: item.frequency || "day",
+      capture_mode: item.capture_mode || "shifts",
       shifts: item.shifts
-        .split(",")
-        .map((x) => x.trim())
-        .filter(Boolean),
+        ? item.shifts
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean)
+        : [],
     });
     closeMobileSidebar();
   }
@@ -436,6 +460,8 @@ export default function App() {
       const payload = {
         indicator_id: Number(dailyForm.indicator_id),
         record_date: dailyForm.record_date,
+        single_value:
+          dailyForm.single_value === "" ? null : Number(dailyForm.single_value),
         shift_a: dailyForm.shift_a === "" ? null : Number(dailyForm.shift_a),
         shift_b: dailyForm.shift_b === "" ? null : Number(dailyForm.shift_b),
         shift_c: dailyForm.shift_c === "" ? null : Number(dailyForm.shift_c),
@@ -448,7 +474,7 @@ export default function App() {
         setEditingDailyId(null);
       } else {
         await API.saveDailyRecord(payload);
-        clearMessageSoon("Captura diaria guardada correctamente");
+        clearMessageSoon("Captura guardada correctamente");
       }
 
       await handleSearchDaily();
@@ -555,6 +581,7 @@ export default function App() {
       record_date: formatDateInput(item.record_date),
       process_id: String(item.process_id || ""),
       indicator_id: String(item.indicator_id || ""),
+      single_value: item.single_value ?? "",
       shift_a: item.shift_a ?? "",
       shift_b: item.shift_b ?? "",
       shift_c: item.shift_c ?? "",
@@ -581,17 +608,20 @@ export default function App() {
         month: Number(historyFilter.month),
         indicator_id: Number(historyFilter.indicator_id),
       });
+
       setMonthMatrixMeta(data);
       setMonthMatrixRows(
         (data.rows || []).map((row) => ({
           ...row,
           record_date: formatDateInput(row.record_date),
+          single_value: row.single_value ?? "",
           shift_a: row.shift_a ?? "",
           shift_b: row.shift_b ?? "",
           shift_c: row.shift_c ?? "",
           observation: row.observation || "",
         }))
       );
+
       clearMessageSoon("Matriz mensual cargada correctamente");
     } catch (err) {
       setMessage(err.message);
@@ -613,6 +643,8 @@ export default function App() {
         indicator_id: Number(historyFilter.indicator_id),
         rows: monthMatrixRows.map((row) => ({
           record_date: row.record_date,
+          single_value:
+            row.single_value === "" ? null : Number(row.single_value),
           shift_a: row.shift_a === "" ? null : Number(row.shift_a),
           shift_b: row.shift_b === "" ? null : Number(row.shift_b),
           shift_c: row.shift_c === "" ? null : Number(row.shift_c),
@@ -1168,6 +1200,45 @@ export default function App() {
                     </select>
                   </div>
 
+                  <div className="inline-form-grid two-cols">
+                    <div className="field">
+                      <label>Frecuencia de medición</label>
+                      <select
+                        value={indicatorForm.frequency}
+                        onChange={(e) =>
+                          setIndicatorForm({
+                            ...indicatorForm,
+                            frequency: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="day">Diaria</option>
+                        <option value="week">Semanal</option>
+                        <option value="month">Mensual</option>
+                      </select>
+                    </div>
+
+                    <div className="field">
+                      <label>Modo de captura</label>
+                      <select
+                        value={indicatorForm.capture_mode}
+                        onChange={(e) =>
+                          setIndicatorForm({
+                            ...indicatorForm,
+                            capture_mode: e.target.value,
+                            shifts:
+                              e.target.value === "single"
+                                ? []
+                                : ["A", "B", "C"],
+                          })
+                        }
+                      >
+                        <option value="shifts">Por turnos</option>
+                        <option value="single">Valor único</option>
+                      </select>
+                    </div>
+                  </div>
+
                   <div className="threshold-grid">
                     <div className="threshold-box">
                       <label>Meta</label>
@@ -1305,21 +1376,23 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="field">
-                    <label>Turnos habilitados</label>
-                    <div className="checks">
-                      {["A", "B", "C"].map((shift) => (
-                        <label key={shift} className="check">
-                          <input
-                            type="checkbox"
-                            checked={indicatorForm.shifts.includes(shift)}
-                            onChange={() => toggleShift(shift)}
-                          />
-                          {shift}
-                        </label>
-                      ))}
+                  {indicatorForm.capture_mode === "shifts" && (
+                    <div className="field">
+                      <label>Turnos habilitados</label>
+                      <div className="checks">
+                        {["A", "B", "C"].map((shift) => (
+                          <label key={shift} className="check">
+                            <input
+                              type="checkbox"
+                              checked={indicatorForm.shifts.includes(shift)}
+                              onChange={() => toggleShift(shift)}
+                            />
+                            {shift}
+                          </label>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="actions">
                     <button className="primary">
@@ -1350,6 +1423,8 @@ export default function App() {
                         <th>Código</th>
                         <th>Nombre</th>
                         <th>Proceso</th>
+                        <th>Frecuencia</th>
+                        <th>Captura</th>
                         <th>Unidad</th>
                         <th>Meta</th>
                         <th>Warning</th>
@@ -1364,6 +1439,8 @@ export default function App() {
                           <td>{item.code}</td>
                           <td>{item.name}</td>
                           <td>{item.process_name}</td>
+                          <td>{formatFrequencyLabel(item.frequency)}</td>
+                          <td>{formatCaptureModeLabel(item.capture_mode)}</td>
                           <td>{item.unit}</td>
                           <td>
                             {formatRule(
@@ -1386,7 +1463,7 @@ export default function App() {
                               item.unit
                             )}
                           </td>
-                          <td>{item.shifts}</td>
+                          <td>{item.capture_mode === "single" ? "-" : item.shifts}</td>
                           <td>
                             <div className="row-actions">
                               <button
@@ -1409,7 +1486,7 @@ export default function App() {
                       ))}
                       {!indicators.length && (
                         <tr>
-                          <td colSpan="9" className="empty">
+                          <td colSpan="11" className="empty">
                             Sin indicadores
                           </td>
                         </tr>
@@ -1464,6 +1541,10 @@ export default function App() {
                             ...dailyForm,
                             process_id: e.target.value,
                             indicator_id: "",
+                            single_value: "",
+                            shift_a: "",
+                            shift_b: "",
+                            shift_c: "",
                           })
                         }
                       >
@@ -1485,6 +1566,10 @@ export default function App() {
                         setDailyForm({
                           ...dailyForm,
                           indicator_id: e.target.value,
+                          single_value: "",
+                          shift_a: "",
+                          shift_b: "",
+                          shift_c: "",
                         })
                       }
                       required
@@ -1503,6 +1588,18 @@ export default function App() {
                       <div className="rule-item">
                         <span>Unidad</span>
                         <strong>{selectedIndicator.unit}</strong>
+                      </div>
+                      <div className="rule-item">
+                        <span>Frecuencia</span>
+                        <strong>
+                          {formatFrequencyLabel(selectedIndicator.frequency)}
+                        </strong>
+                      </div>
+                      <div className="rule-item">
+                        <span>Captura</span>
+                        <strong>
+                          {formatCaptureModeLabel(selectedIndicator.capture_mode)}
+                        </strong>
                       </div>
                       <div className="rule-item">
                         <span>Meta</span>
@@ -1537,46 +1634,72 @@ export default function App() {
                     </div>
                   )}
 
-                  <div className="inline-form-grid three-cols">
+                  {selectedIndicator?.capture_mode === "single" ? (
                     <div className="field">
-                      <label>Turno A</label>
+                      <label>Valor único</label>
                       <input
                         type="number"
                         step="0.01"
-                        value={dailyForm.shift_a}
+                        value={dailyForm.single_value}
                         onChange={(e) =>
-                          setDailyForm({ ...dailyForm, shift_a: e.target.value })
+                          setDailyForm({
+                            ...dailyForm,
+                            single_value: e.target.value,
+                          })
                         }
-                        disabled={!selectedIndicator?.shifts.includes("A")}
                       />
                     </div>
+                  ) : (
+                    <div className="inline-form-grid three-cols">
+                      <div className="field">
+                        <label>Turno A</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={dailyForm.shift_a}
+                          onChange={(e) =>
+                            setDailyForm({
+                              ...dailyForm,
+                              shift_a: e.target.value,
+                            })
+                          }
+                          disabled={!selectedIndicator?.shifts.includes("A")}
+                        />
+                      </div>
 
-                    <div className="field">
-                      <label>Turno B</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={dailyForm.shift_b}
-                        onChange={(e) =>
-                          setDailyForm({ ...dailyForm, shift_b: e.target.value })
-                        }
-                        disabled={!selectedIndicator?.shifts.includes("B")}
-                      />
-                    </div>
+                      <div className="field">
+                        <label>Turno B</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={dailyForm.shift_b}
+                          onChange={(e) =>
+                            setDailyForm({
+                              ...dailyForm,
+                              shift_b: e.target.value,
+                            })
+                          }
+                          disabled={!selectedIndicator?.shifts.includes("B")}
+                        />
+                      </div>
 
-                    <div className="field">
-                      <label>Turno C</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={dailyForm.shift_c}
-                        onChange={(e) =>
-                          setDailyForm({ ...dailyForm, shift_c: e.target.value })
-                        }
-                        disabled={!selectedIndicator?.shifts.includes("C")}
-                      />
+                      <div className="field">
+                        <label>Turno C</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={dailyForm.shift_c}
+                          onChange={(e) =>
+                            setDailyForm({
+                              ...dailyForm,
+                              shift_c: e.target.value,
+                            })
+                          }
+                          disabled={!selectedIndicator?.shifts.includes("C")}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="field">
                     <label>Observación</label>
@@ -1626,6 +1749,7 @@ export default function App() {
                         <th>Fecha</th>
                         <th>Indicador</th>
                         <th>Proceso</th>
+                        <th>Valor</th>
                         <th>General</th>
                         <th>Estado</th>
                       </tr>
@@ -1638,6 +1762,7 @@ export default function App() {
                             {item.indicator_code} - {item.indicator_name}
                           </td>
                           <td>{item.process_name}</td>
+                          <td>{item.single_value ?? "-"}</td>
                           <td>{formatGeneral(item.general, item.unit)}</td>
                           <td>
                             <span className={`status ${item.status}`}>
@@ -1648,7 +1773,7 @@ export default function App() {
                       ))}
                       {!dailyResults.length && (
                         <tr>
-                          <td colSpan="5" className="empty">
+                          <td colSpan="6" className="empty">
                             Sin registros para esa fecha
                           </td>
                         </tr>
@@ -1819,6 +1944,18 @@ export default function App() {
                     <strong>{monthMatrixMeta.unit}</strong>
                   </div>
                   <div className="rule-item">
+                    <span>Frecuencia</span>
+                    <strong>
+                      {formatFrequencyLabel(monthMatrixMeta.frequency)}
+                    </strong>
+                  </div>
+                  <div className="rule-item">
+                    <span>Captura</span>
+                    <strong>
+                      {formatCaptureModeLabel(monthMatrixMeta.capture_mode)}
+                    </strong>
+                  </div>
+                  <div className="rule-item">
                     <span>Meta</span>
                     <strong>
                       {formatRule(
@@ -1830,7 +1967,11 @@ export default function App() {
                   </div>
                   <div className="rule-item">
                     <span>Turnos</span>
-                    <strong>{monthMatrixMeta.shifts}</strong>
+                    <strong>
+                      {monthMatrixMeta.capture_mode === "single"
+                        ? "-"
+                        : monthMatrixMeta.shifts}
+                    </strong>
                   </div>
                 </div>
 
@@ -1839,9 +1980,15 @@ export default function App() {
                     <thead>
                       <tr>
                         <th>Fecha</th>
-                        <th>Turno A</th>
-                        <th>Turno B</th>
-                        <th>Turno C</th>
+                        {monthMatrixMeta.capture_mode === "single" ? (
+                          <th>Valor único</th>
+                        ) : (
+                          <>
+                            <th>Turno A</th>
+                            <th>Turno B</th>
+                            <th>Turno C</th>
+                          </>
+                        )}
                         <th>Observación</th>
                       </tr>
                     </thead>
@@ -1849,51 +1996,72 @@ export default function App() {
                       {monthMatrixRows.map((row, index) => (
                         <tr key={row.record_date}>
                           <td>{row.record_date}</td>
-                          <td>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={row.shift_a}
-                              onChange={(e) =>
-                                updateMonthMatrixRow(
-                                  index,
-                                  "shift_a",
-                                  e.target.value
-                                )
-                              }
-                              disabled={!monthMatrixMeta.shifts.includes("A")}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={row.shift_b}
-                              onChange={(e) =>
-                                updateMonthMatrixRow(
-                                  index,
-                                  "shift_b",
-                                  e.target.value
-                                )
-                              }
-                              disabled={!monthMatrixMeta.shifts.includes("B")}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={row.shift_c}
-                              onChange={(e) =>
-                                updateMonthMatrixRow(
-                                  index,
-                                  "shift_c",
-                                  e.target.value
-                                )
-                              }
-                              disabled={!monthMatrixMeta.shifts.includes("C")}
-                            />
-                          </td>
+
+                          {monthMatrixMeta.capture_mode === "single" ? (
+                            <td>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={row.single_value ?? ""}
+                                onChange={(e) =>
+                                  updateMonthMatrixRow(
+                                    index,
+                                    "single_value",
+                                    e.target.value
+                                  )
+                                }
+                              />
+                            </td>
+                          ) : (
+                            <>
+                              <td>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={row.shift_a}
+                                  onChange={(e) =>
+                                    updateMonthMatrixRow(
+                                      index,
+                                      "shift_a",
+                                      e.target.value
+                                    )
+                                  }
+                                  disabled={!monthMatrixMeta.shifts.includes("A")}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={row.shift_b}
+                                  onChange={(e) =>
+                                    updateMonthMatrixRow(
+                                      index,
+                                      "shift_b",
+                                      e.target.value
+                                    )
+                                  }
+                                  disabled={!monthMatrixMeta.shifts.includes("B")}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={row.shift_c}
+                                  onChange={(e) =>
+                                    updateMonthMatrixRow(
+                                      index,
+                                      "shift_c",
+                                      e.target.value
+                                    )
+                                  }
+                                  disabled={!monthMatrixMeta.shifts.includes("C")}
+                                />
+                              </td>
+                            </>
+                          )}
+
                           <td>
                             <input
                               value={row.observation}
@@ -1911,7 +2079,12 @@ export default function App() {
                       ))}
                       {!monthMatrixRows.length && (
                         <tr>
-                          <td colSpan="5" className="empty">
+                          <td
+                            colSpan={
+                              monthMatrixMeta.capture_mode === "single" ? 3 : 5
+                            }
+                            className="empty"
+                          >
                             Sin filas para el mes seleccionado
                           </td>
                         </tr>
@@ -1997,6 +2170,7 @@ export default function App() {
                       <th>Fecha</th>
                       <th>Proceso</th>
                       <th>Indicador</th>
+                      <th>Valor</th>
                       <th>A</th>
                       <th>B</th>
                       <th>C</th>
@@ -2014,6 +2188,7 @@ export default function App() {
                         <td>
                           {item.indicator_code} - {item.indicator_name}
                         </td>
+                        <td>{item.single_value ?? "-"}</td>
                         <td>{item.shift_a ?? "-"}</td>
                         <td>{item.shift_b ?? "-"}</td>
                         <td>{item.shift_c ?? "-"}</td>
@@ -2046,7 +2221,7 @@ export default function App() {
                     ))}
                     {!historyResults.length && (
                       <tr>
-                        <td colSpan="10" className="empty">
+                        <td colSpan="11" className="empty">
                           Sin resultados
                         </td>
                       </tr>
@@ -2629,6 +2804,16 @@ export default function App() {
                         </div>
 
                         <div className="indicator-rules compact-rules">
+                          <div>
+                            Frecuencia:{" "}
+                            <strong>{formatFrequencyLabel(item.frequency)}</strong>
+                          </div>
+                          <div>
+                            Captura:{" "}
+                            <strong>
+                              {formatCaptureModeLabel(item.capture_mode)}
+                            </strong>
+                          </div>
                           <div>
                             Meta:{" "}
                             {formatRule(
