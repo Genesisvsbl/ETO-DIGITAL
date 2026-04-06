@@ -122,7 +122,6 @@ const API = {
       }),
     }),
 
-  // Compatibilidad con lo que ya usabas
   getMonthMatrix: ({ year, month, indicator_id }) =>
     API.getPeriodMatrix({ year, month, indicator_id }),
 

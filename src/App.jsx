@@ -1606,6 +1606,7 @@ export default function App() {
                             shift_a: "",
                             shift_b: "",
                             shift_c: "",
+                            observation: "",
                           })
                         }
                       >
@@ -1623,16 +1624,19 @@ export default function App() {
                     <label>Indicador</label>
                     <select
                       value={dailyForm.indicator_id}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const newIndicatorId = e.target.value;
+
                         setDailyForm({
                           ...dailyForm,
-                          indicator_id: e.target.value,
+                          indicator_id: newIndicatorId,
                           single_value: "",
                           shift_a: "",
                           shift_b: "",
                           shift_c: "",
-                        })
-                      }
+                          observation: "",
+                        });
+                      }}
                       required
                     >
                       <option value="">Seleccione</option>
