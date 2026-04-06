@@ -132,6 +132,54 @@ function formatCaptureModeLabel(value) {
   return value || "-";
 }
 
+function normalizeShifts(shifts) {
+  if (Array.isArray(shifts)) {
+    return shifts.map((x) => String(x).trim()).filter(Boolean);
+  }
+
+  if (typeof shifts === "string") {
+    return shifts
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function hasShift(source, shift) {
+  return normalizeShifts(source).includes(shift);
+}
+
+function formatRecordValue(record) {
+  if (record?.capture_mode === "single") {
+    return record?.single_value ?? "-";
+  }
+
+  const enabled = normalizeShifts(record?.shifts);
+  const parts = [];
+
+  if (enabled.includes("A") && record?.shift_a !== null && record?.shift_a !== undefined) {
+    parts.push(`A: ${record.shift_a}`);
+  }
+  if (enabled.includes("B") && record?.shift_b !== null && record?.shift_b !== undefined) {
+    parts.push(`B: ${record.shift_b}`);
+  }
+  if (enabled.includes("C") && record?.shift_c !== null && record?.shift_c !== undefined) {
+    parts.push(`C: ${record.shift_c}`);
+  }
+
+  return parts.length ? parts.join(" | ") : "-";
+}
+
+function getMassiveLoadTitle(meta) {
+  const frequency = meta?.frequency;
+  if (frequency === "day") return "Carga masiva diaria";
+  if (frequency === "week") return "Carga masiva semanal";
+  if (frequency === "month") return "Carga masiva mensual";
+  return "Carga masiva";
+}
+
 export default function App() {
   const [tab, setTab] = useState("portal");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -387,7 +435,9 @@ export default function App() {
         frequency: indicatorForm.frequency,
         capture_mode: indicatorForm.capture_mode,
         shifts:
-          indicatorForm.capture_mode === "single" ? [] : indicatorForm.shifts,
+          indicatorForm.capture_mode === "single"
+            ? []
+            : normalizeShifts(indicatorForm.shifts),
       };
 
       if (editingIndicatorId) {
@@ -423,12 +473,7 @@ export default function App() {
       critical_value: item.critical_value,
       frequency: item.frequency || "day",
       capture_mode: item.capture_mode || "shifts",
-      shifts: item.shifts
-        ? item.shifts
-            .split(",")
-            .map((x) => x.trim())
-            .filter(Boolean)
-        : [],
+      shifts: normalizeShifts(item.shifts),
     });
     closeMobileSidebar();
   }
@@ -609,7 +654,11 @@ export default function App() {
         indicator_id: Number(historyFilter.indicator_id),
       });
 
-      setMonthMatrixMeta(data);
+      setMonthMatrixMeta({
+        ...data,
+        shifts: normalizeShifts(data.shifts),
+      });
+
       setMonthMatrixRows(
         (data.rows || []).map((row) => ({
           ...row,
@@ -622,7 +671,7 @@ export default function App() {
         }))
       );
 
-      clearMessageSoon("Matriz mensual cargada correctamente");
+      clearMessageSoon("Matriz cargada correctamente");
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -633,7 +682,7 @@ export default function App() {
   async function handleSaveMonthMatrix() {
     try {
       if (!historyFilter.indicator_id || !monthMatrixRows.length) {
-        setMessage("No hay matriz mensual cargada para guardar.");
+        setMessage("No hay matriz cargada para guardar.");
         return;
       }
 
@@ -696,14 +745,20 @@ export default function App() {
     );
   }, [dailyForm.indicator_id, indicators]);
 
+  const selectedIndicatorShifts = useMemo(() => {
+    return normalizeShifts(selectedIndicator?.shifts);
+  }, [selectedIndicator]);
+
   function toggleShift(shift) {
     setIndicatorForm((prev) => {
-      const exists = prev.shifts.includes(shift);
+      const normalized = normalizeShifts(prev.shifts);
+      const exists = normalized.includes(shift);
+
       return {
         ...prev,
         shifts: exists
-          ? prev.shifts.filter((s) => s !== shift)
-          : [...prev.shifts, shift],
+          ? normalized.filter((s) => s !== shift)
+          : [...normalized, shift],
       };
     });
   }
@@ -1384,7 +1439,9 @@ export default function App() {
                           <label key={shift} className="check">
                             <input
                               type="checkbox"
-                              checked={indicatorForm.shifts.includes(shift)}
+                              checked={normalizeShifts(indicatorForm.shifts).includes(
+                                shift
+                              )}
                               onChange={() => toggleShift(shift)}
                             />
                             {shift}
@@ -1463,7 +1520,11 @@ export default function App() {
                               item.unit
                             )}
                           </td>
-                          <td>{item.capture_mode === "single" ? "-" : item.shifts}</td>
+                          <td>
+                            {item.capture_mode === "single"
+                              ? "-"
+                              : normalizeShifts(item.shifts).join(", ")}
+                          </td>
                           <td>
                             <div className="row-actions">
                               <button
@@ -1663,7 +1724,7 @@ export default function App() {
                               shift_a: e.target.value,
                             })
                           }
-                          disabled={!selectedIndicator?.shifts.includes("A")}
+                          disabled={!selectedIndicatorShifts.includes("A")}
                         />
                       </div>
 
@@ -1679,7 +1740,7 @@ export default function App() {
                               shift_b: e.target.value,
                             })
                           }
-                          disabled={!selectedIndicator?.shifts.includes("B")}
+                          disabled={!selectedIndicatorShifts.includes("B")}
                         />
                       </div>
 
@@ -1695,7 +1756,7 @@ export default function App() {
                               shift_c: e.target.value,
                             })
                           }
-                          disabled={!selectedIndicator?.shifts.includes("C")}
+                          disabled={!selectedIndicatorShifts.includes("C")}
                         />
                       </div>
                     </div>
@@ -1762,7 +1823,7 @@ export default function App() {
                             {item.indicator_code} - {item.indicator_name}
                           </td>
                           <td>{item.process_name}</td>
-                          <td>{item.single_value ?? "-"}</td>
+                          <td>{formatRecordValue(item)}</td>
                           <td>{formatGeneral(item.general, item.unit)}</td>
                           <td>
                             <span className={`status ${item.status}`}>
@@ -1900,14 +1961,14 @@ export default function App() {
                   className="secondary"
                   onClick={handleLoadMonthMatrix}
                 >
-                  Cargar mes
+                  Cargar matriz
                 </button>
                 <button
                   type="button"
                   className="secondary"
                   onClick={handleSaveMonthMatrix}
                 >
-                  Guardar todo el mes
+                  Guardar matriz
                 </button>
                 {monthMatrixMeta && (
                   <button
@@ -1918,7 +1979,7 @@ export default function App() {
                       setMonthMatrixRows([]);
                     }}
                   >
-                    Cerrar carga mensual
+                    Cerrar carga
                   </button>
                 )}
               </div>
@@ -1927,7 +1988,8 @@ export default function App() {
             {monthMatrixMeta && (
               <section className="panel-block">
                 <div className="subsection-title">
-                  Carga masiva mensual - {monthMatrixMeta.indicator_code} -{" "}
+                  {getMassiveLoadTitle(monthMatrixMeta)} -{" "}
+                  {monthMatrixMeta.indicator_code} -{" "}
                   {monthMatrixMeta.indicator_name}
                 </div>
 
@@ -1970,7 +2032,7 @@ export default function App() {
                     <strong>
                       {monthMatrixMeta.capture_mode === "single"
                         ? "-"
-                        : monthMatrixMeta.shifts}
+                        : normalizeShifts(monthMatrixMeta.shifts).join(", ")}
                     </strong>
                   </div>
                 </div>
@@ -2026,7 +2088,7 @@ export default function App() {
                                       e.target.value
                                     )
                                   }
-                                  disabled={!monthMatrixMeta.shifts.includes("A")}
+                                  disabled={!hasShift(monthMatrixMeta.shifts, "A")}
                                 />
                               </td>
                               <td>
@@ -2041,7 +2103,7 @@ export default function App() {
                                       e.target.value
                                     )
                                   }
-                                  disabled={!monthMatrixMeta.shifts.includes("B")}
+                                  disabled={!hasShift(monthMatrixMeta.shifts, "B")}
                                 />
                               </td>
                               <td>
@@ -2056,7 +2118,7 @@ export default function App() {
                                       e.target.value
                                     )
                                   }
-                                  disabled={!monthMatrixMeta.shifts.includes("C")}
+                                  disabled={!hasShift(monthMatrixMeta.shifts, "C")}
                                 />
                               </td>
                             </>
@@ -2072,7 +2134,7 @@ export default function App() {
                                   e.target.value
                                 )
                               }
-                              placeholder="Observación del día"
+                              placeholder="Observación"
                             />
                           </td>
                         </tr>
@@ -2085,7 +2147,7 @@ export default function App() {
                             }
                             className="empty"
                           >
-                            Sin filas para el mes seleccionado
+                            Sin filas para el período seleccionado
                           </td>
                         </tr>
                       )}
@@ -2188,10 +2250,16 @@ export default function App() {
                         <td>
                           {item.indicator_code} - {item.indicator_name}
                         </td>
-                        <td>{item.single_value ?? "-"}</td>
-                        <td>{item.shift_a ?? "-"}</td>
-                        <td>{item.shift_b ?? "-"}</td>
-                        <td>{item.shift_c ?? "-"}</td>
+                        <td>{item.capture_mode === "single" ? item.single_value ?? "-" : "-"}</td>
+                        <td>
+                          {hasShift(item.shifts, "A") ? item.shift_a ?? "-" : "-"}
+                        </td>
+                        <td>
+                          {hasShift(item.shifts, "B") ? item.shift_b ?? "-" : "-"}
+                        </td>
+                        <td>
+                          {hasShift(item.shifts, "C") ? item.shift_c ?? "-" : "-"}
+                        </td>
                         <td>{formatGeneral(item.general, item.unit)}</td>
                         <td>
                           <span className={`status ${item.status}`}>

@@ -54,13 +54,25 @@ const API = {
   createIndicator: (payload) =>
     request("/indicators", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        frequency: payload.frequency,
+        capture_mode: payload.capture_mode,
+        shifts:
+          payload.capture_mode === "single" ? [] : payload.shifts || [],
+      }),
     }),
 
   updateIndicator: (id, payload) =>
     request(`/indicators/${id}`, {
       method: "PUT",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        frequency: payload.frequency,
+        capture_mode: payload.capture_mode,
+        shifts:
+          payload.capture_mode === "single" ? [] : payload.shifts || [],
+      }),
     }),
 
   deleteIndicator: (id) =>
@@ -93,22 +105,29 @@ const API = {
     return request(`/daily-records/by-date?${query.toString()}`);
   },
 
-  getMonthMatrix: ({ year, month, indicator_id }) => {
+  getPeriodMatrix: ({ year, month, indicator_id }) => {
     const query = new URLSearchParams();
     query.append("year", year);
     query.append("month", month);
     query.append("indicator_id", indicator_id);
-    return request(`/daily-records/month?${query.toString()}`);
+    return request(`/daily-records/matrix?${query.toString()}`);
   },
 
-  saveMonthMatrix: ({ indicator_id, rows }) =>
-    request("/daily-records/month", {
+  savePeriodMatrix: ({ indicator_id, rows }) =>
+    request("/daily-records/matrix", {
       method: "POST",
       body: JSON.stringify({
         indicator_id,
         rows,
       }),
     }),
+
+  // Compatibilidad con lo que ya usabas
+  getMonthMatrix: ({ year, month, indicator_id }) =>
+    API.getPeriodMatrix({ year, month, indicator_id }),
+
+  saveMonthMatrix: ({ indicator_id, rows }) =>
+    API.savePeriodMatrix({ indicator_id, rows }),
 
   getHistory: ({ year, month, day, level, process_id, indicator_id }) => {
     const query = new URLSearchParams();
