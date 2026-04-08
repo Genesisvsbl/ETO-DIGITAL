@@ -56,47 +56,50 @@ class MonthlyRecordSave(BaseModel):
 def run_safe_migrations():
     with engine.begin() as connection:
         try:
-            indicator_columns = [
-                row[1]
-                for row in connection.execute(text("PRAGMA table_info(indicators)")).fetchall()
-            ]
-            daily_record_columns = [
-                row[1]
-                for row in connection.execute(text("PRAGMA table_info(daily_records)")).fetchall()
-            ]
+            # Estas migraciones son seguras solo para SQLite.
+            dialect_name = connection.dialect.name
 
-            if "frequency" not in indicator_columns:
-                connection.execute(
-                    text("ALTER TABLE indicators ADD COLUMN frequency VARCHAR NOT NULL DEFAULT 'day'")
-                )
-            if "capture_mode" not in indicator_columns:
-                connection.execute(
-                    text("ALTER TABLE indicators ADD COLUMN capture_mode VARCHAR NOT NULL DEFAULT 'shifts'")
-                )
-            if "shifts" not in indicator_columns:
-                connection.execute(
-                    text("ALTER TABLE indicators ADD COLUMN shifts VARCHAR NOT NULL DEFAULT 'A,B,C'")
-                )
+            if dialect_name == "sqlite":
+                indicator_columns = [
+                    row[1]
+                    for row in connection.execute(text("PRAGMA table_info(indicators)")).fetchall()
+                ]
+                daily_record_columns = [
+                    row[1]
+                    for row in connection.execute(text("PRAGMA table_info(daily_records)")).fetchall()
+                ]
 
-            if "single_value" not in daily_record_columns:
-                connection.execute(
-                    text("ALTER TABLE daily_records ADD COLUMN single_value FLOAT")
-                )
-            if "shift_a" not in daily_record_columns:
-                connection.execute(
-                    text("ALTER TABLE daily_records ADD COLUMN shift_a FLOAT")
-                )
-            if "shift_b" not in daily_record_columns:
-                connection.execute(
-                    text("ALTER TABLE daily_records ADD COLUMN shift_b FLOAT")
-                )
-            if "shift_c" not in daily_record_columns:
-                connection.execute(
-                    text("ALTER TABLE daily_records ADD COLUMN shift_c FLOAT")
-                )
+                if "frequency" not in indicator_columns:
+                    connection.execute(
+                        text("ALTER TABLE indicators ADD COLUMN frequency VARCHAR NOT NULL DEFAULT 'day'")
+                    )
+                if "capture_mode" not in indicator_columns:
+                    connection.execute(
+                        text("ALTER TABLE indicators ADD COLUMN capture_mode VARCHAR NOT NULL DEFAULT 'shifts'")
+                    )
+                if "shifts" not in indicator_columns:
+                    connection.execute(
+                        text("ALTER TABLE indicators ADD COLUMN shifts VARCHAR NOT NULL DEFAULT 'A,B,C'")
+                    )
 
-            # Normalización para datos viejos:
-            # si el indicador es single, jamás debe conservar turnos.
+                if "single_value" not in daily_record_columns:
+                    connection.execute(
+                        text("ALTER TABLE daily_records ADD COLUMN single_value FLOAT")
+                    )
+                if "shift_a" not in daily_record_columns:
+                    connection.execute(
+                        text("ALTER TABLE daily_records ADD COLUMN shift_a FLOAT")
+                    )
+                if "shift_b" not in daily_record_columns:
+                    connection.execute(
+                        text("ALTER TABLE daily_records ADD COLUMN shift_b FLOAT")
+                    )
+                if "shift_c" not in daily_record_columns:
+                    connection.execute(
+                        text("ALTER TABLE daily_records ADD COLUMN shift_c FLOAT")
+                    )
+
+            # Normalización funcional para cualquier motor
             connection.execute(
                 text(
                     """
@@ -107,8 +110,6 @@ def run_safe_migrations():
                 )
             )
 
-            # Normalización defensiva de registros viejos:
-            # si el indicador es single, vaciamos valores por turnos.
             connection.execute(
                 text(
                     """
@@ -184,7 +185,21 @@ def sanitize_record_values_for_mode(capture_mode, single_value, shift_a, shift_b
     return None, shift_a, shift_b, shift_c
 
 
-def calculate_general(indicator: Indicator, single_value, shift_a, shift_b, shift_c):
+def compare_value(value: float, operator: str, rule_value: float) -> bool:
+    if operator == ">":
+        return value > rule_value
+    if operator == ">=":
+        return value >= rule_value
+    if operator == "<":
+        return value < rule_value
+    if operator == "<=":
+        return value <= rule_value
+    if operator == "=":
+        return value == rule_value
+    return False
+
+
+def calculate_measured_value(indicator: Indicator, single_value, shift_a, shift_b, shift_c):
     if indicator.capture_mode == "single":
         return round(float(single_value or 0), 2)
 
@@ -204,24 +219,42 @@ def calculate_general(indicator: Indicator, single_value, shift_a, shift_b, shif
     return round(sum(values) / len(values), 2)
 
 
-def compare_value(value: float, operator: str, rule_value: float) -> bool:
-    if operator == ">":
-        return value > rule_value
-    if operator == ">=":
-        return value >= rule_value
-    if operator == "<":
-        return value < rule_value
-    if operator == "<=":
-        return value <= rule_value
+def calculate_general(indicator: Indicator, measured_value: float):
+    target = float(indicator.target_value)
+    operator = indicator.target_operator
+
     if operator == "=":
-        return value == rule_value
-    return False
+        if target == 0:
+            return 100.0 if measured_value == 0 else 0.0
+
+        diff_ratio = abs(measured_value - target) / abs(target)
+        compliance = max(0.0, 100.0 - (diff_ratio * 100.0))
+        return round(min(compliance, 100.0), 2)
+
+    if operator in [">", ">="]:
+        if target == 0:
+            return 100.0 if measured_value >= 0 else 0.0
+
+        compliance = (measured_value / target) * 100.0
+        return round(max(0.0, min(compliance, 100.0)), 2)
+
+    if operator in ["<", "<="]:
+        if measured_value <= target:
+            return 100.0
+
+        if target == 0:
+            return 0.0
+
+        compliance = (target / measured_value) * 100.0
+        return round(max(0.0, min(compliance, 100.0)), 2)
+
+    return 0.0
 
 
-def calculate_status(indicator: Indicator, general: float):
-    if compare_value(general, indicator.critical_operator, indicator.critical_value):
+def calculate_status(indicator: Indicator, measured_value: float):
+    if compare_value(measured_value, indicator.critical_operator, indicator.critical_value):
         return "critical"
-    if compare_value(general, indicator.warning_operator, indicator.warning_value):
+    if compare_value(measured_value, indicator.warning_operator, indicator.warning_value):
         return "warning"
     return "ok"
 
@@ -248,7 +281,6 @@ def validate_indicator_payload(payload: IndicatorCreate):
     if payload.capture_mode not in VALID_CAPTURE_MODES:
         raise HTTPException(status_code=400, detail="Modo de captura no válido")
 
-    # Si es valor único, jamás exigimos turnos
     if payload.capture_mode == "single":
         payload.shifts = []
         return []
@@ -626,7 +658,6 @@ def update_indicator(indicator_id: int, payload: IndicatorCreate, db: Session = 
     indicator.capture_mode = "single" if payload.capture_mode == "single" else "shifts"
     indicator.shifts = "" if payload.capture_mode == "single" else ",".join(shifts_clean)
 
-    # Si el indicador queda como valor único, limpiamos basura vieja de turnos
     if indicator.capture_mode == "single":
         records = db.query(DailyRecord).filter(DailyRecord.indicator_id == indicator.id).all()
         for r in records:
@@ -693,14 +724,15 @@ def save_daily_record(payload: DailyRecordCreate, db: Session = Depends(get_db))
         payload.shift_c,
     )
 
-    general = calculate_general(
+    measured_value = calculate_measured_value(
         indicator,
         single_value,
         shift_a,
         shift_b,
         shift_c
     )
-    status = calculate_status(indicator, general)
+    general = calculate_general(indicator, measured_value)
+    status = calculate_status(indicator, measured_value)
 
     record = (
         db.query(DailyRecord)
@@ -790,14 +822,15 @@ def update_daily_record(record_id: int, payload: DailyRecordCreate, db: Session 
         payload.shift_c,
     )
 
-    general = calculate_general(
+    measured_value = calculate_measured_value(
         indicator,
         single_value,
         shift_a,
         shift_b,
         shift_c
     )
-    record_status = calculate_status(indicator, general)
+    general = calculate_general(indicator, measured_value)
+    record_status = calculate_status(indicator, measured_value)
 
     record.indicator_id = payload.indicator_id
     record.record_date = payload.record_date
@@ -982,14 +1015,15 @@ def save_period_matrix(payload: PeriodRecordSave, db: Session = Depends(get_db))
             row.shift_c,
         )
 
-        general = calculate_general(
+        measured_value = calculate_measured_value(
             indicator,
             single_value,
             shift_a,
             shift_b,
             shift_c
         )
-        record_status = calculate_status(indicator, general)
+        general = calculate_general(indicator, measured_value)
+        record_status = calculate_status(indicator, measured_value)
 
         if existing:
             existing.single_value = single_value
