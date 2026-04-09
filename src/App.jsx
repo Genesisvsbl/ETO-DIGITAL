@@ -195,6 +195,13 @@ function buildFallbackPersonRows(year, month, count = 10) {
   }));
 }
 
+function buildRecordDateFromDay(year, month, day) {
+  const yyyy = String(year);
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export default function App() {
   const [tab, setTab] = useState("portal");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -749,52 +756,63 @@ export default function App() {
         return;
       }
 
-      setLoading(true);
-
       const selected = indicators.find(
         (item) => String(item.id) === String(historyFilter.indicator_id)
       );
 
-      let data = null;
-
-      if (typeof API.getMatrixByPerson === "function") {
-        data = await API.getMatrixByPerson({
-          year: Number(historyFilter.year),
-          month: Number(historyFilter.month),
-          indicator_id: Number(historyFilter.indicator_id),
-        });
-      } else {
-        data = {
-          year: Number(historyFilter.year),
-          month: Number(historyFilter.month),
-          indicator_id: Number(historyFilter.indicator_id),
-          indicator_code: selected?.code || "",
-          indicator_name: selected?.name || "",
-          process_name: selected?.process_name || "",
-          unit: selected?.unit || "número",
-          frequency: selected?.frequency || "month",
-          rows: buildFallbackPersonRows(historyFilter.year, historyFilter.month, 10),
-        };
+      if (!selected) {
+        setMessage("Indicador no encontrado.");
+        return;
       }
 
-      setPersonMatrixMeta({
-        ...data,
-        year: Number(data?.year || historyFilter.year),
-        month: Number(data?.month || historyFilter.month),
-        indicator_id: Number(data?.indicator_id || historyFilter.indicator_id),
-      });
+      if (selected.scope_type !== "person") {
+        setMessage("El indicador seleccionado no es de tipo persona.");
+        return;
+      }
 
-      setPersonMatrixRows(
-        (data?.rows || []).map((row) => ({
-          person: row.person || row.person_name || "",
-          day:
-            row.day !== null && row.day !== undefined && row.day !== ""
-              ? Number(row.day)
-              : "",
+      setLoading(true);
+
+      const indicatorId = Number(historyFilter.indicator_id);
+      const year = Number(historyFilter.year);
+      const month = Number(historyFilter.month);
+
+      const [targets, records] = await Promise.all([
+        API.getPersonTargets({
+          indicator_id: indicatorId,
+          active_only: true,
+        }),
+        API.getPersonRecords({
+          indicator_id: indicatorId,
+          year,
+          month,
+        }),
+      ]);
+
+      const rows =
+        (records || []).map((row) => ({
+          person_id: row.person_id,
+          person_code: row.person_code || "",
+          person: row.person_name || "",
+          day: row.record_date ? Number(String(row.record_date).slice(8, 10)) : "",
           value:
             row.value !== null && row.value !== undefined ? String(row.value) : "",
-        }))
-      );
+          observation: row.observation || "",
+        })) || [];
+
+      setPersonMatrixMeta({
+        indicator_id: indicatorId,
+        indicator_code: selected.code,
+        indicator_name: selected.name,
+        process_name: selected.process_name,
+        unit: selected.unit,
+        frequency: selected.frequency,
+        year,
+        month,
+        targets: targets || [],
+        originalRows: rows,
+      });
+
+      setPersonMatrixRows(rows);
 
       clearMessageSoon("Matriz por persona cargada correctamente");
     } catch (err) {
@@ -806,39 +824,111 @@ export default function App() {
 
   async function handleSavePersonMatrix() {
     try {
-      if (!historyFilter.indicator_id || !personMatrixRows.length) {
-        setMessage("No hay matriz por persona cargada para guardar.");
+      if (!historyFilter.indicator_id) {
+        setMessage("Debes seleccionar un indicador.");
+        return;
+      }
+
+      if (!personMatrixMeta) {
+        setMessage("Primero debes cargar la matriz por persona.");
         return;
       }
 
       setLoading(true);
 
-      const payload = {
-        year: Number(historyFilter.year),
-        month: Number(historyFilter.month),
-        indicator_id: Number(historyFilter.indicator_id),
-        rows: personMatrixRows
-          .filter(
-            (row) =>
-              String(row.person || "").trim() !== "" &&
-              row.day !== "" &&
-              row.day !== null &&
-              row.day !== undefined
-          )
-          .map((row) => ({
-            person: String(row.person || "").trim(),
-            day: Number(row.day),
-            value: row.value === "" ? null : Number(row.value),
-          })),
-      };
+      const indicatorId = Number(historyFilter.indicator_id);
+      const year = Number(historyFilter.year);
+      const month = Number(historyFilter.month);
 
-      if (typeof API.saveMatrixByPerson === "function") {
-        await API.saveMatrixByPerson(payload);
-      } else {
-        await Promise.resolve(payload);
+      const targets = personMatrixMeta.targets || [];
+      const targetsByName = new Map(
+        targets.map((item) => [
+          String(item.person_name || "").trim().toLowerCase(),
+          item,
+        ])
+      );
+
+      const groupedByDate = {};
+      const currentKeys = new Set();
+
+      for (const row of personMatrixRows) {
+        const personName = String(row.person || "").trim();
+        const day = Number(row.day);
+
+        if (!personName || !day) continue;
+
+        const resolvedTarget = row.person_id
+          ? targets.find((t) => Number(t.person_id) === Number(row.person_id))
+          : targetsByName.get(personName.toLowerCase());
+
+        if (!resolvedTarget) {
+          throw new Error(`La persona "${personName}" no está asociada al indicador.`);
+        }
+
+        const personId = Number(resolvedTarget.person_id);
+        const recordDate = buildRecordDateFromDay(year, month, day);
+        const value =
+          row.value === "" || row.value === null || row.value === undefined
+            ? 0
+            : Number(row.value);
+
+        const key = `${personId}-${recordDate}`;
+        currentKeys.add(key);
+
+        if (!groupedByDate[recordDate]) {
+          groupedByDate[recordDate] = [];
+        }
+
+        groupedByDate[recordDate].push({
+          person_id: personId,
+          value,
+          observation: row.observation || "",
+        });
       }
 
+      const originalRows = personMatrixMeta.originalRows || [];
+
+      for (const row of originalRows) {
+        const personId = Number(row.person_id);
+        const day = Number(row.day);
+
+        if (!personId || !day) continue;
+
+        const recordDate = buildRecordDateFromDay(year, month, day);
+        const key = `${personId}-${recordDate}`;
+
+        if (!currentKeys.has(key)) {
+          if (!groupedByDate[recordDate]) {
+            groupedByDate[recordDate] = [];
+          }
+
+          groupedByDate[recordDate].push({
+            person_id: personId,
+            value: 0,
+            observation: "",
+          });
+        }
+      }
+
+      const dates = Object.keys(groupedByDate);
+
+      if (!dates.length) {
+        setMessage("No hay filas válidas para guardar.");
+        return;
+      }
+
+      await Promise.all(
+        dates.map((record_date) =>
+          API.savePersonGrid({
+            indicator_id: indicatorId,
+            record_date,
+            rows: groupedByDate[record_date],
+          })
+        )
+      );
+
       clearMessageSoon("Carga por persona guardada correctamente");
+      await handleLoadPersonMatrix();
       await runHistorySearch();
     } catch (err) {
       setMessage(err.message);
@@ -854,7 +944,17 @@ export default function App() {
   }
 
   function addPersonMatrixRow() {
-    setPersonMatrixRows((prev) => [...prev, { person: "", day: "", value: "" }]);
+    setPersonMatrixRows((prev) => [
+      ...prev,
+      {
+        person_id: null,
+        person_code: "",
+        person: "",
+        day: "",
+        value: "",
+        observation: "",
+      },
+    ]);
   }
 
   function removePersonMatrixRow(index) {
@@ -2419,7 +2519,9 @@ export default function App() {
                     </thead>
                     <tbody>
                       {personMatrixRows.map((row, index) => (
-                        <tr key={`${index}-${row.person}-${row.day}`}>
+                        <tr
+                          key={`${index}-${row.person_id || "new"}-${row.person}-${row.day}`}
+                        >
                           <td>
                             <input
                               value={row.person}
