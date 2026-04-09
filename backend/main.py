@@ -7,10 +7,18 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import extract, text
+
 from pydantic import BaseModel
 
 from database import SessionLocal, engine, Base
-from models import Process, Indicator, DailyRecord
+from models import (
+    Process,
+    Indicator,
+    DailyRecord,
+    Person,
+    PersonIndicatorTarget,
+    PersonRecord,
+)
 from schemas import (
     ProcessCreate,
     ProcessOut,
@@ -19,6 +27,16 @@ from schemas import (
     DailyRecordCreate,
     DailyRecordOut,
     PeriodRecordSave,
+    PersonCreate,
+    PersonOut,
+    PersonIndicatorTargetCreate,
+    PersonIndicatorTargetOut,
+    PersonRecordBulkSave,
+    PersonRecordOut,
+    PersonCaptureGridOut,
+    PersonCaptureGridRow,
+    PersonDashboardOut,
+    PersonDashboardItem,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -37,6 +55,7 @@ VALID_OPERATORS = [">", ">=", "<", "<=", "="]
 VALID_UNITS = ["%", "días", "horas", "unidades", "casos", "número"]
 VALID_FREQUENCIES = ["day", "week", "month"]
 VALID_CAPTURE_MODES = ["single", "shifts"]
+VALID_SCOPE_TYPES = ["standard", "person"]
 
 
 class MonthlyRecordRow(BaseModel):
@@ -56,7 +75,6 @@ class MonthlyRecordSave(BaseModel):
 def run_safe_migrations():
     with engine.begin() as connection:
         try:
-            # Estas migraciones son seguras solo para SQLite.
             dialect_name = connection.dialect.name
 
             if dialect_name == "sqlite":
@@ -81,25 +99,60 @@ def run_safe_migrations():
                     connection.execute(
                         text("ALTER TABLE indicators ADD COLUMN shifts VARCHAR NOT NULL DEFAULT 'A,B,C'")
                     )
+                if "scope_type" not in indicator_columns:
+                    connection.execute(
+                        text("ALTER TABLE indicators ADD COLUMN scope_type VARCHAR NOT NULL DEFAULT 'standard'")
+                    )
 
                 if "single_value" not in daily_record_columns:
-                    connection.execute(
-                        text("ALTER TABLE daily_records ADD COLUMN single_value FLOAT")
-                    )
+                    connection.execute(text("ALTER TABLE daily_records ADD COLUMN single_value FLOAT"))
                 if "shift_a" not in daily_record_columns:
-                    connection.execute(
-                        text("ALTER TABLE daily_records ADD COLUMN shift_a FLOAT")
-                    )
+                    connection.execute(text("ALTER TABLE daily_records ADD COLUMN shift_a FLOAT"))
                 if "shift_b" not in daily_record_columns:
-                    connection.execute(
-                        text("ALTER TABLE daily_records ADD COLUMN shift_b FLOAT")
-                    )
+                    connection.execute(text("ALTER TABLE daily_records ADD COLUMN shift_b FLOAT"))
                 if "shift_c" not in daily_record_columns:
-                    connection.execute(
-                        text("ALTER TABLE daily_records ADD COLUMN shift_c FLOAT")
-                    )
+                    connection.execute(text("ALTER TABLE daily_records ADD COLUMN shift_c FLOAT"))
 
-            # Normalización funcional para cualquier motor
+            else:
+                # PostgreSQL / Neon
+                connection.execute(
+                    text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS scope_type VARCHAR NOT NULL DEFAULT 'standard'")
+                )
+                connection.execute(
+                    text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS frequency VARCHAR NOT NULL DEFAULT 'day'")
+                )
+                connection.execute(
+                    text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS capture_mode VARCHAR NOT NULL DEFAULT 'shifts'")
+                )
+                connection.execute(
+                    text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS shifts VARCHAR NOT NULL DEFAULT 'A,B,C'")
+                )
+
+                try:
+                    connection.execute(
+                        text("ALTER TABLE daily_records ADD COLUMN IF NOT EXISTS single_value DOUBLE PRECISION")
+                    )
+                except Exception:
+                    pass
+                try:
+                    connection.execute(
+                        text("ALTER TABLE daily_records ADD COLUMN IF NOT EXISTS shift_a DOUBLE PRECISION")
+                    )
+                except Exception:
+                    pass
+                try:
+                    connection.execute(
+                        text("ALTER TABLE daily_records ADD COLUMN IF NOT EXISTS shift_b DOUBLE PRECISION")
+                    )
+                except Exception:
+                    pass
+                try:
+                    connection.execute(
+                        text("ALTER TABLE daily_records ADD COLUMN IF NOT EXISTS shift_c DOUBLE PRECISION")
+                    )
+                except Exception:
+                    pass
+
             connection.execute(
                 text(
                     """
@@ -131,6 +184,7 @@ def run_safe_migrations():
 
 
 run_safe_migrations()
+Base.metadata.create_all(bind=engine)
 
 
 def get_db():
@@ -169,10 +223,27 @@ def normalize_capture_mode(value: Optional[str]) -> str:
     return mapping.get(clean, clean)
 
 
+def normalize_scope_type(value: Optional[str]) -> str:
+    mapping = {
+        "standard": "standard",
+        "person": "person",
+        "persona": "person",
+        "persona por persona": "person",
+    }
+    clean = (value or "").strip().lower()
+    return mapping.get(clean, clean)
+
+
 def generate_indicator_code(db: Session):
     last = db.query(Indicator).order_by(Indicator.id.desc()).first()
     next_id = 1 if not last else last.id + 1
     return f"IND-{next_id:04d}"
+
+
+def generate_person_code(db: Session):
+    last = db.query(Person).order_by(Person.id.desc()).first()
+    next_id = 1 if not last else last.id + 1
+    return f"PER-{next_id:04d}"
 
 
 def get_enabled_shifts(indicator: Indicator):
@@ -226,7 +297,6 @@ def calculate_general(indicator: Indicator, measured_value: float):
     if operator == "=":
         if target == 0:
             return 100.0 if measured_value == 0 else 0.0
-
         diff_ratio = abs(measured_value - target) / abs(target)
         compliance = max(0.0, 100.0 - (diff_ratio * 100.0))
         return round(min(compliance, 100.0), 2)
@@ -234,17 +304,14 @@ def calculate_general(indicator: Indicator, measured_value: float):
     if operator in [">", ">="]:
         if target == 0:
             return 100.0 if measured_value >= 0 else 0.0
-
         compliance = (measured_value / target) * 100.0
         return round(max(0.0, min(compliance, 100.0)), 2)
 
     if operator in ["<", "<="]:
         if measured_value <= target:
             return 100.0
-
         if target == 0:
             return 0.0
-
         compliance = (target / measured_value) * 100.0
         return round(max(0.0, min(compliance, 100.0)), 2)
 
@@ -259,9 +326,14 @@ def calculate_status(indicator: Indicator, measured_value: float):
     return "ok"
 
 
+def calculate_person_status(indicator: Indicator, compliance: float):
+    return calculate_status(indicator, compliance)
+
+
 def validate_indicator_payload(payload: IndicatorCreate):
     payload.frequency = normalize_frequency(payload.frequency)
     payload.capture_mode = normalize_capture_mode(payload.capture_mode)
+    payload.scope_type = normalize_scope_type(payload.scope_type)
 
     if payload.unit not in VALID_UNITS:
         raise HTTPException(status_code=400, detail="Unidad no válida")
@@ -281,6 +353,14 @@ def validate_indicator_payload(payload: IndicatorCreate):
     if payload.capture_mode not in VALID_CAPTURE_MODES:
         raise HTTPException(status_code=400, detail="Modo de captura no válido")
 
+    if payload.scope_type not in VALID_SCOPE_TYPES:
+        raise HTTPException(status_code=400, detail="Tipo de alcance no válido")
+
+    if payload.scope_type == "person":
+        payload.capture_mode = "single"
+        payload.shifts = []
+        return []
+
     if payload.capture_mode == "single":
         payload.shifts = []
         return []
@@ -299,6 +379,9 @@ def validate_indicator_payload(payload: IndicatorCreate):
 
 
 def validate_record_payload(indicator: Indicator, payload: DailyRecordCreate):
+    if indicator.scope_type != "standard":
+        raise HTTPException(status_code=400, detail="Este indicador usa captura por persona")
+
     if indicator.capture_mode == "single":
         if payload.single_value is None:
             raise HTTPException(status_code=400, detail="Este indicador requiere un valor único")
@@ -339,6 +422,7 @@ def base_history_query(db: Session):
         .join(DailyRecord.indicator)
         .join(Indicator.process)
         .options(joinedload(DailyRecord.indicator).joinedload(Indicator.process))
+        .filter(Indicator.scope_type == "standard")
     )
 
 
@@ -382,6 +466,12 @@ def get_period_dates(period: str):
     raise HTTPException(status_code=400, detail="Periodo no válido. Use day, week, month o year.")
 
 
+def get_month_start_end(year: int, month: int):
+    start = date(year, month, 1)
+    end = date(year, month, calendar.monthrange(year, month)[1])
+    return start, end
+
+
 def build_daily_record_out(record: DailyRecord):
     return DailyRecordOut(
         id=record.id,
@@ -403,14 +493,12 @@ def build_daily_record_out(record: DailyRecord):
         frequency=record.indicator.frequency,
         capture_mode=record.indicator.capture_mode,
         shifts=record.indicator.shifts,
+        scope_type=record.indicator.scope_type,
     )
 
 
 def format_week_label(start_date: date, end_date: date, index: int):
-    return (
-        f"Semana {index} | "
-        f"{start_date.strftime('%d/%m')} - {end_date.strftime('%d/%m')}"
-    )
+    return f"Semana {index} | {start_date.strftime('%d/%m')} - {end_date.strftime('%d/%m')}"
 
 
 def build_matrix_rows(year: int, month: int, indicator: Indicator, existing_records: list[DailyRecord]):
@@ -475,6 +563,58 @@ def build_matrix_rows(year: int, month: int, indicator: Indicator, existing_reco
     raise HTTPException(status_code=400, detail="Frecuencia no soportada para la matriz")
 
 
+def build_indicator_out(indicator: Indicator):
+    return IndicatorOut(
+        id=indicator.id,
+        code=indicator.code,
+        name=indicator.name,
+        process_id=indicator.process_id,
+        meeting_level=indicator.meeting_level,
+        unit=indicator.unit,
+        target_operator=indicator.target_operator,
+        target_value=indicator.target_value,
+        warning_operator=indicator.warning_operator,
+        warning_value=indicator.warning_value,
+        critical_operator=indicator.critical_operator,
+        critical_value=indicator.critical_value,
+        frequency=normalize_frequency(indicator.frequency),
+        capture_mode=normalize_capture_mode(indicator.capture_mode),
+        shifts="" if normalize_capture_mode(indicator.capture_mode) == "single" else (indicator.shifts or ""),
+        scope_type=normalize_scope_type(indicator.scope_type),
+        process_name=indicator.process.name,
+        process_level=indicator.process.level,
+    )
+
+
+def build_person_target_out(item: PersonIndicatorTarget):
+    return PersonIndicatorTargetOut(
+        id=item.id,
+        indicator_id=item.indicator_id,
+        person_id=item.person_id,
+        target_value=item.target_value,
+        is_active=item.is_active,
+        indicator_code=item.indicator.code,
+        indicator_name=item.indicator.name,
+        person_code=item.person.code,
+        person_name=item.person.full_name,
+    )
+
+
+def build_person_record_out(item: PersonRecord):
+    return PersonRecordOut(
+        id=item.id,
+        indicator_id=item.indicator_id,
+        indicator_code=item.indicator.code,
+        indicator_name=item.indicator.name,
+        person_id=item.person_id,
+        person_code=item.person.code,
+        person_name=item.person.full_name,
+        record_date=item.record_date,
+        value=item.value,
+        observation=item.observation,
+    )
+
+
 @app.get("/")
 def root():
     return {"message": "ETO DIGITAL API OK"}
@@ -489,10 +629,7 @@ def create_process(payload: ProcessCreate, db: Session = Depends(get_db)):
     if exists:
         raise HTTPException(status_code=400, detail="El proceso ya existe")
 
-    process = Process(
-        name=payload.name.strip(),
-        level=payload.level
-    )
+    process = Process(name=payload.name.strip(), level=payload.level)
     db.add(process)
     db.commit()
     db.refresh(process)
@@ -567,36 +704,21 @@ def create_indicator(payload: IndicatorCreate, db: Session = Depends(get_db)):
         frequency=payload.frequency,
         capture_mode="single" if payload.capture_mode == "single" else "shifts",
         shifts="" if payload.capture_mode == "single" else ",".join(shifts_clean),
+        scope_type=payload.scope_type,
     )
     db.add(indicator)
     db.commit()
     db.refresh(indicator)
 
-    return IndicatorOut(
-        id=indicator.id,
-        code=indicator.code,
-        name=indicator.name,
-        process_id=indicator.process_id,
-        meeting_level=indicator.meeting_level,
-        unit=indicator.unit,
-        target_operator=indicator.target_operator,
-        target_value=indicator.target_value,
-        warning_operator=indicator.warning_operator,
-        warning_value=indicator.warning_value,
-        critical_operator=indicator.critical_operator,
-        critical_value=indicator.critical_value,
-        frequency=indicator.frequency,
-        capture_mode=indicator.capture_mode,
-        shifts=indicator.shifts,
-        process_name=process.name,
-        process_level=process.level,
-    )
+    indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == indicator.id).first()
+    return build_indicator_out(indicator)
 
 
 @app.get("/indicators", response_model=list[IndicatorOut])
 def list_indicators(
     process_id: Optional[int] = None,
     level: Optional[int] = None,
+    scope_type: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     query = db.query(Indicator).options(joinedload(Indicator.process))
@@ -605,31 +727,11 @@ def list_indicators(
         query = query.filter(Indicator.process_id == process_id)
     if level:
         query = query.filter(Indicator.meeting_level == level)
+    if scope_type:
+        query = query.filter(Indicator.scope_type == normalize_scope_type(scope_type))
 
     items = query.order_by(Indicator.code.asc()).all()
-
-    return [
-        IndicatorOut(
-            id=i.id,
-            code=i.code,
-            name=i.name,
-            process_id=i.process_id,
-            meeting_level=i.meeting_level,
-            unit=i.unit,
-            target_operator=i.target_operator,
-            target_value=i.target_value,
-            warning_operator=i.warning_operator,
-            warning_value=i.warning_value,
-            critical_operator=i.critical_operator,
-            critical_value=i.critical_value,
-            frequency=normalize_frequency(i.frequency),
-            capture_mode=normalize_capture_mode(i.capture_mode),
-            shifts="" if normalize_capture_mode(i.capture_mode) == "single" else (i.shifts or ""),
-            process_name=i.process.name,
-            process_level=i.process.level,
-        )
-        for i in items
-    ]
+    return [build_indicator_out(i) for i in items]
 
 
 @app.put("/indicators/{indicator_id}", response_model=IndicatorOut)
@@ -657,6 +759,7 @@ def update_indicator(indicator_id: int, payload: IndicatorCreate, db: Session = 
     indicator.frequency = payload.frequency
     indicator.capture_mode = "single" if payload.capture_mode == "single" else "shifts"
     indicator.shifts = "" if payload.capture_mode == "single" else ",".join(shifts_clean)
+    indicator.scope_type = payload.scope_type
 
     if indicator.capture_mode == "single":
         records = db.query(DailyRecord).filter(DailyRecord.indicator_id == indicator.id).all()
@@ -668,25 +771,8 @@ def update_indicator(indicator_id: int, payload: IndicatorCreate, db: Session = 
     db.commit()
     db.refresh(indicator)
 
-    return IndicatorOut(
-        id=indicator.id,
-        code=indicator.code,
-        name=indicator.name,
-        process_id=indicator.process_id,
-        meeting_level=indicator.meeting_level,
-        unit=indicator.unit,
-        target_operator=indicator.target_operator,
-        target_value=indicator.target_value,
-        warning_operator=indicator.warning_operator,
-        warning_value=indicator.warning_value,
-        critical_operator=indicator.critical_operator,
-        critical_value=indicator.critical_value,
-        frequency=indicator.frequency,
-        capture_mode=indicator.capture_mode,
-        shifts=indicator.shifts,
-        process_name=process.name,
-        process_level=process.level,
-    )
+    indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == indicator.id).first()
+    return build_indicator_out(indicator)
 
 
 @app.delete("/indicators/{indicator_id}")
@@ -724,13 +810,7 @@ def save_daily_record(payload: DailyRecordCreate, db: Session = Depends(get_db))
         payload.shift_c,
     )
 
-    measured_value = calculate_measured_value(
-        indicator,
-        single_value,
-        shift_a,
-        shift_b,
-        shift_c
-    )
+    measured_value = calculate_measured_value(indicator, single_value, shift_a, shift_b, shift_c)
     general = calculate_general(indicator, measured_value)
     status = calculate_status(indicator, measured_value)
 
@@ -807,10 +887,7 @@ def update_daily_record(record_id: int, payload: DailyRecordCreate, db: Session 
         .first()
     )
     if duplicate:
-        raise HTTPException(
-            status_code=400,
-            detail="Ya existe otro registro para ese indicador en esa fecha"
-        )
+        raise HTTPException(status_code=400, detail="Ya existe otro registro para ese indicador en esa fecha")
 
     validate_record_payload(indicator, payload)
 
@@ -822,13 +899,7 @@ def update_daily_record(record_id: int, payload: DailyRecordCreate, db: Session 
         payload.shift_c,
     )
 
-    measured_value = calculate_measured_value(
-        indicator,
-        single_value,
-        shift_a,
-        shift_b,
-        shift_c
-    )
+    measured_value = calculate_measured_value(indicator, single_value, shift_a, shift_b, shift_c)
     general = calculate_general(indicator, measured_value)
     record_status = calculate_status(indicator, measured_value)
 
@@ -878,6 +949,7 @@ def get_daily_by_date(
         .join(Indicator.process)
         .options(joinedload(DailyRecord.indicator).joinedload(Indicator.process))
         .filter(DailyRecord.record_date == record_date)
+        .filter(Indicator.scope_type == "standard")
     )
 
     if process_id:
@@ -907,6 +979,9 @@ def get_period_matrix(
     )
     if not indicator:
         raise HTTPException(status_code=404, detail="Indicador no encontrado")
+
+    if indicator.scope_type != "standard":
+        raise HTTPException(status_code=400, detail="Este indicador usa captura por persona")
 
     month_start = date(year, month, 1)
     month_end = date(year, month, calendar.monthrange(year, month)[1])
@@ -951,6 +1026,7 @@ def get_period_matrix(
         "frequency": indicator.frequency,
         "capture_mode": indicator.capture_mode,
         "shifts": indicator.shifts,
+        "scope_type": indicator.scope_type,
         "rows": rows,
     }
 
@@ -965,6 +1041,9 @@ def save_period_matrix(payload: PeriodRecordSave, db: Session = Depends(get_db))
     )
     if not indicator:
         raise HTTPException(status_code=404, detail="Indicador no encontrado")
+
+    if indicator.scope_type != "standard":
+        raise HTTPException(status_code=400, detail="Este indicador usa captura por persona")
 
     saved = 0
     deleted = 0
@@ -989,10 +1068,7 @@ def save_period_matrix(payload: PeriodRecordSave, db: Session = Depends(get_db))
             continue
 
         if indicator.capture_mode == "single" and row.single_value is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Falta valor único para la fila {row.record_date}"
-            )
+            raise HTTPException(status_code=400, detail=f"Falta valor único para la fila {row.record_date}")
 
         if indicator.capture_mode == "shifts":
             enabled = get_enabled_shifts(indicator)
@@ -1015,13 +1091,7 @@ def save_period_matrix(payload: PeriodRecordSave, db: Session = Depends(get_db))
             row.shift_c,
         )
 
-        measured_value = calculate_measured_value(
-            indicator,
-            single_value,
-            shift_a,
-            shift_b,
-            shift_c
-        )
+        measured_value = calculate_measured_value(indicator, single_value, shift_a, shift_b, shift_c)
         general = calculate_general(indicator, measured_value)
         record_status = calculate_status(indicator, measured_value)
 
@@ -1207,10 +1277,7 @@ def get_dashboard_overview(
         {"name": "Critical", "value": critical_count},
     ]
 
-    ranking = [
-        {"name": x["process_name"], "value": x["average_general"]}
-        for x in process_cards
-    ]
+    ranking = [{"name": x["process_name"], "value": x["average_general"]} for x in process_cards]
 
     return {
         "summary": {
@@ -1253,11 +1320,7 @@ def get_process_dashboard(
 
     if not records:
         return {
-            "process": {
-                "id": process.id,
-                "name": process.name,
-                "level": process.level
-            },
+            "process": {"id": process.id, "name": process.name, "level": process.level},
             "summary": {
                 "average_general": 0,
                 "total_records": 0,
@@ -1284,10 +1347,7 @@ def get_process_dashboard(
 
     trend = []
     for label, values in sorted(trend_map.items()):
-        trend.append({
-            "label": label,
-            "value": round(sum(values) / len(values), 2)
-        })
+        trend.append({"label": label, "value": round(sum(values) / len(values), 2)})
 
     latest_by_indicator = {}
     grouped_indicator_records = defaultdict(list)
@@ -1303,10 +1363,7 @@ def get_process_dashboard(
         trend_records = grouped_indicator_records[current_indicator_id]
         ordered = sorted(trend_records, key=lambda x: x.record_date)
 
-        trend_values = [
-            {"label": str(x.record_date), "value": x.general}
-            for x in ordered
-        ]
+        trend_values = [{"label": str(x.record_date), "value": x.general} for x in ordered]
 
         direction = "stable"
         if len(ordered) >= 2:
@@ -1374,11 +1431,7 @@ def get_process_dashboard(
     ]
 
     return {
-        "process": {
-            "id": process.id,
-            "name": process.name,
-            "level": process.level
-        },
+        "process": {"id": process.id, "name": process.name, "level": process.level},
         "summary": {
             "average_general": average_general,
             "total_records": total_records,
@@ -1392,3 +1445,427 @@ def get_process_dashboard(
         "pareto": pareto,
         "status_distribution": status_distribution
     }
+
+
+# -------------------------
+# PERSONAS
+# -------------------------
+@app.post("/persons", response_model=PersonOut)
+def create_person(payload: PersonCreate, db: Session = Depends(get_db)):
+    code = payload.code.strip() if payload.code.strip() else generate_person_code(db)
+
+    exists_code = db.query(Person).filter(Person.code == code).first()
+    if exists_code:
+        raise HTTPException(status_code=400, detail="Ya existe una persona con ese código")
+
+    if payload.document:
+        exists_doc = db.query(Person).filter(Person.document == payload.document.strip()).first()
+        if exists_doc:
+            raise HTTPException(status_code=400, detail="Ya existe una persona con ese documento")
+
+    person = Person(
+        code=code,
+        full_name=payload.full_name.strip(),
+        document=payload.document.strip() if payload.document else None,
+        position=payload.position.strip() if payload.position else None,
+        area=payload.area.strip() if payload.area else None,
+        is_active=payload.is_active,
+    )
+    db.add(person)
+    db.commit()
+    db.refresh(person)
+    return person
+
+
+@app.get("/persons", response_model=list[PersonOut])
+def list_persons(active_only: bool = False, db: Session = Depends(get_db)):
+    query = db.query(Person)
+    if active_only:
+        query = query.filter(Person.is_active == True)
+    return query.order_by(Person.full_name.asc()).all()
+
+
+@app.put("/persons/{person_id}", response_model=PersonOut)
+def update_person(person_id: int, payload: PersonCreate, db: Session = Depends(get_db)):
+    person = db.query(Person).filter(Person.id == person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="Persona no encontrada")
+
+    code = payload.code.strip() if payload.code.strip() else person.code
+
+    exists_code = db.query(Person).filter(Person.code == code, Person.id != person_id).first()
+    if exists_code:
+        raise HTTPException(status_code=400, detail="Ya existe otra persona con ese código")
+
+    if payload.document:
+        exists_doc = db.query(Person).filter(
+            Person.document == payload.document.strip(),
+            Person.id != person_id
+        ).first()
+        if exists_doc:
+            raise HTTPException(status_code=400, detail="Ya existe otra persona con ese documento")
+
+    person.code = code
+    person.full_name = payload.full_name.strip()
+    person.document = payload.document.strip() if payload.document else None
+    person.position = payload.position.strip() if payload.position else None
+    person.area = payload.area.strip() if payload.area else None
+    person.is_active = payload.is_active
+
+    db.commit()
+    db.refresh(person)
+    return person
+
+
+@app.delete("/persons/{person_id}")
+def delete_person(person_id: int, db: Session = Depends(get_db)):
+    person = db.query(Person).filter(Person.id == person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="Persona no encontrada")
+
+    db.delete(person)
+    db.commit()
+    return {"message": "Persona eliminada correctamente"}
+
+
+# -------------------------
+# METAS POR PERSONA
+# -------------------------
+@app.post("/person-indicator-targets", response_model=PersonIndicatorTargetOut)
+def create_or_update_person_target(payload: PersonIndicatorTargetCreate, db: Session = Depends(get_db)):
+    indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == payload.indicator_id).first()
+    if not indicator:
+        raise HTTPException(status_code=404, detail="Indicador no encontrado")
+    if indicator.scope_type != "person":
+        raise HTTPException(status_code=400, detail="El indicador no es de tipo persona")
+
+    person = db.query(Person).filter(Person.id == payload.person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="Persona no encontrada")
+
+    item = db.query(PersonIndicatorTarget).filter(
+        PersonIndicatorTarget.indicator_id == payload.indicator_id,
+        PersonIndicatorTarget.person_id == payload.person_id
+    ).first()
+
+    if item:
+        item.target_value = payload.target_value
+        item.is_active = payload.is_active
+    else:
+        item = PersonIndicatorTarget(
+            indicator_id=payload.indicator_id,
+            person_id=payload.person_id,
+            target_value=payload.target_value,
+            is_active=payload.is_active,
+        )
+        db.add(item)
+
+    db.commit()
+    db.refresh(item)
+    item = db.query(PersonIndicatorTarget).options(
+        joinedload(PersonIndicatorTarget.indicator),
+        joinedload(PersonIndicatorTarget.person)
+    ).filter(PersonIndicatorTarget.id == item.id).first()
+    return build_person_target_out(item)
+
+
+@app.get("/person-indicator-targets", response_model=list[PersonIndicatorTargetOut])
+def list_person_targets(
+    indicator_id: Optional[int] = None,
+    person_id: Optional[int] = None,
+    active_only: bool = False,
+    db: Session = Depends(get_db)
+):
+    query = db.query(PersonIndicatorTarget).options(
+        joinedload(PersonIndicatorTarget.indicator),
+        joinedload(PersonIndicatorTarget.person)
+    )
+
+    if indicator_id:
+        query = query.filter(PersonIndicatorTarget.indicator_id == indicator_id)
+    if person_id:
+        query = query.filter(PersonIndicatorTarget.person_id == person_id)
+    if active_only:
+        query = query.filter(PersonIndicatorTarget.is_active == True)
+
+    items = query.order_by(Person.full_name.asc()).join(PersonIndicatorTarget.person).all()
+    return [build_person_target_out(x) for x in items]
+
+
+@app.delete("/person-indicator-targets/{target_id}")
+def delete_person_target(target_id: int, db: Session = Depends(get_db)):
+    item = db.query(PersonIndicatorTarget).filter(PersonIndicatorTarget.id == target_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Asignación no encontrada")
+
+    db.delete(item)
+    db.commit()
+    return {"message": "Asignación eliminada correctamente"}
+
+
+# -------------------------
+# CAPTURA POR PERSONA
+# -------------------------
+@app.get("/person-records/grid", response_model=PersonCaptureGridOut)
+def get_person_capture_grid(
+    indicator_id: int,
+    record_date: date,
+    db: Session = Depends(get_db)
+):
+    indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == indicator_id).first()
+    if not indicator:
+        raise HTTPException(status_code=404, detail="Indicador no encontrado")
+    if indicator.scope_type != "person":
+        raise HTTPException(status_code=400, detail="El indicador no es de tipo persona")
+
+    period_start = record_date.replace(day=1)
+    period_end = record_date
+
+    targets = db.query(PersonIndicatorTarget).options(
+        joinedload(PersonIndicatorTarget.person)
+    ).filter(
+        PersonIndicatorTarget.indicator_id == indicator_id,
+        PersonIndicatorTarget.is_active == True
+    ).join(PersonIndicatorTarget.person).order_by(Person.full_name.asc()).all()
+
+    current_records = db.query(PersonRecord).filter(
+        PersonRecord.indicator_id == indicator_id,
+        PersonRecord.record_date == record_date
+    ).all()
+    current_map = {x.person_id: x for x in current_records}
+
+    accumulated_rows = db.query(
+        PersonRecord.person_id,
+        text("COALESCE(SUM(value), 0) AS accumulated")
+    ).filter(
+        PersonRecord.indicator_id == indicator_id,
+        PersonRecord.record_date >= period_start,
+        PersonRecord.record_date <= period_end
+    ).group_by(PersonRecord.person_id).all()
+
+    accumulated_map = {row[0]: float(row[1] or 0) for row in accumulated_rows}
+
+    rows = []
+    for target in targets:
+        day_record = current_map.get(target.person_id)
+        day_value = float(day_record.value) if day_record else 0.0
+        accumulated = round(float(accumulated_map.get(target.person_id, 0.0)), 2)
+        target_value = round(float(target.target_value or 0), 2)
+        remaining = round(max(target_value - accumulated, 0.0), 2)
+
+        if target_value <= 0:
+            compliance = 100.0 if accumulated > 0 else 0.0
+        else:
+            compliance = round(min((accumulated / target_value) * 100.0, 100.0), 2)
+
+        status = calculate_person_status(indicator, compliance)
+
+        rows.append(PersonCaptureGridRow(
+            person_id=target.person_id,
+            person_code=target.person.code,
+            person_name=target.person.full_name,
+            target_value=target_value,
+            day_value=round(day_value, 2),
+            accumulated=accumulated,
+            remaining=remaining,
+            compliance=compliance,
+            status=status,
+            observation=day_record.observation if day_record else None,
+        ))
+
+    return PersonCaptureGridOut(
+        indicator_id=indicator.id,
+        indicator_code=indicator.code,
+        indicator_name=indicator.name,
+        process_id=indicator.process.id,
+        process_name=indicator.process.name,
+        meeting_level=indicator.meeting_level,
+        unit=indicator.unit,
+        frequency=indicator.frequency,
+        scope_type=indicator.scope_type,
+        record_date=record_date,
+        rows=rows,
+    )
+
+
+@app.post("/person-records/bulk")
+def save_person_records_bulk(payload: PersonRecordBulkSave, db: Session = Depends(get_db)):
+    indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == payload.indicator_id).first()
+    if not indicator:
+        raise HTTPException(status_code=404, detail="Indicador no encontrado")
+    if indicator.scope_type != "person":
+        raise HTTPException(status_code=400, detail="El indicador no es de tipo persona")
+
+    target_map = {
+        x.person_id: x
+        for x in db.query(PersonIndicatorTarget).filter(
+            PersonIndicatorTarget.indicator_id == payload.indicator_id,
+            PersonIndicatorTarget.is_active == True
+        ).all()
+    }
+
+    saved = 0
+    deleted = 0
+
+    for row in payload.rows:
+        if row.person_id not in target_map:
+            raise HTTPException(
+                status_code=400,
+                detail=f"La persona {row.person_id} no está asociada al indicador"
+            )
+
+        existing = db.query(PersonRecord).filter(
+            PersonRecord.indicator_id == payload.indicator_id,
+            PersonRecord.person_id == row.person_id,
+            PersonRecord.record_date == payload.record_date
+        ).first()
+
+        raw_value = 0 if row.value is None else float(row.value)
+        observation = (row.observation or "").strip()
+
+        if raw_value == 0 and not observation:
+            if existing:
+                db.delete(existing)
+                deleted += 1
+            continue
+
+        if existing:
+            existing.value = raw_value
+            existing.observation = observation or None
+        else:
+            db.add(PersonRecord(
+                indicator_id=payload.indicator_id,
+                person_id=row.person_id,
+                record_date=payload.record_date,
+                value=raw_value,
+                observation=observation or None,
+            ))
+
+        saved += 1
+
+    db.commit()
+    return {
+        "message": "Captura por persona guardada correctamente",
+        "saved_rows": saved,
+        "deleted_rows": deleted,
+    }
+
+
+@app.get("/person-records", response_model=list[PersonRecordOut])
+def list_person_records(
+    indicator_id: Optional[int] = None,
+    person_id: Optional[int] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(PersonRecord).options(
+        joinedload(PersonRecord.indicator),
+        joinedload(PersonRecord.person)
+    )
+
+    if indicator_id:
+        query = query.filter(PersonRecord.indicator_id == indicator_id)
+    if person_id:
+        query = query.filter(PersonRecord.person_id == person_id)
+    if year:
+        query = query.filter(extract("year", PersonRecord.record_date) == year)
+    if month:
+        query = query.filter(extract("month", PersonRecord.record_date) == month)
+
+    items = query.order_by(PersonRecord.record_date.desc(), PersonRecord.id.desc()).all()
+    return [build_person_record_out(x) for x in items]
+
+
+# -------------------------
+# DASHBOARD POR PERSONA
+# -------------------------
+@app.get("/dashboard/person", response_model=PersonDashboardOut)
+def get_person_dashboard(
+    indicator_id: int,
+    year: int,
+    month: int,
+    db: Session = Depends(get_db)
+):
+    indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == indicator_id).first()
+    if not indicator:
+        raise HTTPException(status_code=404, detail="Indicador no encontrado")
+    if indicator.scope_type != "person":
+        raise HTTPException(status_code=400, detail="El indicador no es de tipo persona")
+
+    start_date, end_date = get_month_start_end(year, month)
+
+    targets = db.query(PersonIndicatorTarget).options(
+        joinedload(PersonIndicatorTarget.person)
+    ).filter(
+        PersonIndicatorTarget.indicator_id == indicator_id,
+        PersonIndicatorTarget.is_active == True
+    ).join(PersonIndicatorTarget.person).order_by(Person.full_name.asc()).all()
+
+    accumulated_rows = db.query(
+        PersonRecord.person_id,
+        text("COALESCE(SUM(value), 0) AS accumulated")
+    ).filter(
+        PersonRecord.indicator_id == indicator_id,
+        PersonRecord.record_date >= start_date,
+        PersonRecord.record_date <= end_date
+    ).group_by(PersonRecord.person_id).all()
+
+    accumulated_map = {row[0]: float(row[1] or 0) for row in accumulated_rows}
+
+    ranking = []
+    ok_count = 0
+    warning_count = 0
+    critical_count = 0
+
+    for target in targets:
+        accumulated = round(float(accumulated_map.get(target.person_id, 0.0)), 2)
+        target_value = round(float(target.target_value or 0), 2)
+        remaining = round(max(target_value - accumulated, 0.0), 2)
+
+        if target_value <= 0:
+            compliance = 100.0 if accumulated > 0 else 0.0
+        else:
+            compliance = round(min((accumulated / target_value) * 100.0, 100.0), 2)
+
+        status = calculate_person_status(indicator, compliance)
+
+        if status == "ok":
+            ok_count += 1
+        elif status == "warning":
+            warning_count += 1
+        else:
+            critical_count += 1
+
+        ranking.append(PersonDashboardItem(
+            person_id=target.person_id,
+            person_code=target.person.code,
+            person_name=target.person.full_name,
+            target_value=target_value,
+            accumulated=accumulated,
+            remaining=remaining,
+            compliance=compliance,
+            status=status,
+        ))
+
+    ranking.sort(key=lambda x: (-x.compliance, x.person_name))
+
+    average_compliance = round(
+        sum(x.compliance for x in ranking) / len(ranking), 2
+    ) if ranking else 0
+
+    return PersonDashboardOut(
+        indicator_id=indicator.id,
+        indicator_code=indicator.code,
+        indicator_name=indicator.name,
+        process_name=indicator.process.name,
+        period_label=f"{month:02d}/{year}",
+        summary={
+            "total_persons": len(ranking),
+            "average_compliance": average_compliance,
+            "ok_count": ok_count,
+            "warning_count": warning_count,
+            "critical_count": critical_count,
+        },
+        ranking=ranking,
+    )

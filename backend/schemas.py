@@ -37,6 +37,9 @@ class IndicatorCreate(BaseModel):
     capture_mode: str
     shifts: List[str] = Field(default_factory=list)
 
+    # NUEVO
+    scope_type: str = "standard"
+
 
 class IndicatorOut(BaseModel):
     id: int
@@ -60,6 +63,9 @@ class IndicatorOut(BaseModel):
     frequency: str
     capture_mode: str
     shifts: str
+
+    # NUEVO
+    scope_type: str
 
     process_name: str
     process_level: int
@@ -103,6 +109,7 @@ class DailyRecordOut(BaseModel):
     frequency: str
     capture_mode: str
     shifts: str
+    scope_type: str
 
     class Config:
         from_attributes = True
@@ -123,3 +130,127 @@ class PeriodRecordRow(BaseModel):
 class PeriodRecordSave(BaseModel):
     indicator_id: int
     rows: List[PeriodRecordRow]
+
+
+# -------------------------
+# PERSONAS
+# -------------------------
+class PersonCreate(BaseModel):
+    code: str
+    full_name: str
+    document: Optional[str] = None
+    position: Optional[str] = None
+    area: Optional[str] = None
+    is_active: bool = True
+
+
+class PersonOut(BaseModel):
+    id: int
+    code: str
+    full_name: str
+    document: Optional[str] = None
+    position: Optional[str] = None
+    area: Optional[str] = None
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+
+class PersonIndicatorTargetCreate(BaseModel):
+    indicator_id: int
+    person_id: int
+    target_value: float
+    is_active: bool = True
+
+
+class PersonIndicatorTargetOut(BaseModel):
+    id: int
+    indicator_id: int
+    person_id: int
+    target_value: float
+    is_active: bool
+
+    indicator_code: str
+    indicator_name: str
+    person_code: str
+    person_name: str
+
+    class Config:
+        from_attributes = True
+
+
+class PersonRecordRowSave(BaseModel):
+    person_id: int
+    value: Optional[float] = 0
+    observation: Optional[str] = None
+
+
+class PersonRecordBulkSave(BaseModel):
+    indicator_id: int
+    record_date: date
+    rows: List[PersonRecordRowSave]
+
+
+class PersonRecordOut(BaseModel):
+    id: int
+    indicator_id: int
+    indicator_code: str
+    indicator_name: str
+    person_id: int
+    person_code: str
+    person_name: str
+    record_date: date
+    value: float
+    observation: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PersonCaptureGridRow(BaseModel):
+    person_id: int
+    person_code: str
+    person_name: str
+    target_value: float
+    day_value: float
+    accumulated: float
+    remaining: float
+    compliance: float
+    status: str
+    observation: Optional[str] = None
+
+
+class PersonCaptureGridOut(BaseModel):
+    indicator_id: int
+    indicator_code: str
+    indicator_name: str
+    process_id: int
+    process_name: str
+    meeting_level: int
+    unit: str
+    frequency: str
+    scope_type: str
+    record_date: date
+    rows: List[PersonCaptureGridRow]
+
+
+class PersonDashboardItem(BaseModel):
+    person_id: int
+    person_code: str
+    person_name: str
+    target_value: float
+    accumulated: float
+    remaining: float
+    compliance: float
+    status: str
+
+
+class PersonDashboardOut(BaseModel):
+    indicator_id: int
+    indicator_code: str
+    indicator_name: str
+    process_name: str
+    period_label: str
+    summary: dict
+    ranking: List[PersonDashboardItem]
