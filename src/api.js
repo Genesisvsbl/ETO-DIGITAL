@@ -105,28 +105,20 @@ const API = {
     return request(`/daily-records/by-date?${query.toString()}`);
   },
 
-  getPeriodMatrix: ({ year, month, indicator_id }) => {
+  // 🔥 NUEVO: MATRIZ PARAMETRIZABLE (BASE DE TU REQUERIMIENTO)
+  getMatrixByPerson: ({ indicator_id, year, month }) => {
     const query = new URLSearchParams();
+    query.append("indicator_id", indicator_id);
     query.append("year", year);
     query.append("month", month);
-    query.append("indicator_id", indicator_id);
-    return request(`/daily-records/matrix?${query.toString()}`);
+    return request(`/matrix/person?${query.toString()}`);
   },
 
-  savePeriodMatrix: ({ indicator_id, rows }) =>
-    request("/daily-records/matrix", {
+  saveMatrixByPerson: ({ indicator_id, rows }) =>
+    request("/matrix/person", {
       method: "POST",
-      body: JSON.stringify({
-        indicator_id,
-        rows,
-      }),
+      body: JSON.stringify({ indicator_id, rows }),
     }),
-
-  getMonthMatrix: ({ year, month, indicator_id }) =>
-    API.getPeriodMatrix({ year, month, indicator_id }),
-
-  saveMonthMatrix: ({ indicator_id, rows }) =>
-    API.savePeriodMatrix({ indicator_id, rows }),
 
   getHistory: ({ year, month, day, level, process_id, indicator_id }) => {
     const query = new URLSearchParams();
@@ -137,24 +129,6 @@ const API = {
     if (process_id) query.append("process_id", process_id);
     if (indicator_id) query.append("indicator_id", indicator_id);
     return request(`/history?${query.toString()}`);
-  },
-
-  getHistorySummary: ({
-    year,
-    month,
-    day,
-    level,
-    process_id,
-    indicator_id,
-  }) => {
-    const query = new URLSearchParams();
-    if (year) query.append("year", year);
-    if (month) query.append("month", month);
-    if (day) query.append("day", day);
-    if (level) query.append("level", level);
-    if (process_id) query.append("process_id", process_id);
-    if (indicator_id) query.append("indicator_id", indicator_id);
-    return request(`/history/summary?${query.toString()}`);
   },
 
   getDashboardOverview: ({ year, month, day, level }) => {

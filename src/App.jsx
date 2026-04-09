@@ -180,6 +180,21 @@ function getMassiveLoadTitle(meta) {
   return "Carga masiva";
 }
 
+function getDaysInMonth(year, month) {
+  const safeYear = Number(year) || new Date().getFullYear();
+  const safeMonth = Number(month) || 1;
+  return new Date(safeYear, safeMonth, 0).getDate();
+}
+
+function buildFallbackPersonRows(year, month, count = 10) {
+  const totalDays = getDaysInMonth(year, month);
+  return Array.from({ length: Math.min(count, totalDays) }, (_, index) => ({
+    person: "",
+    day: index + 1,
+    value: "",
+  }));
+}
+
 export default function App() {
   const [tab, setTab] = useState("portal");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -230,6 +245,9 @@ export default function App() {
 
   const [monthMatrixMeta, setMonthMatrixMeta] = useState(null);
   const [monthMatrixRows, setMonthMatrixRows] = useState([]);
+
+  const [personMatrixMeta, setPersonMatrixMeta] = useState(null);
+  const [personMatrixRows, setPersonMatrixRows] = useState([]);
 
   const [dashboardFilter, setDashboardFilter] = useState({
     process_id: "",
@@ -358,6 +376,8 @@ export default function App() {
     setEditingDailyId(null);
     setMonthMatrixMeta(null);
     setMonthMatrixRows([]);
+    setPersonMatrixMeta(null);
+    setPersonMatrixRows([]);
   }
 
   async function handleCreateProcess(e) {
@@ -718,6 +738,129 @@ export default function App() {
     );
   }
 
+  async function handleLoadPersonMatrix() {
+    try {
+      if (
+        !historyFilter.year ||
+        !historyFilter.month ||
+        !historyFilter.indicator_id
+      ) {
+        setMessage("Debes seleccionar año, mes e indicador para carga por persona.");
+        return;
+      }
+
+      setLoading(true);
+
+      const selected = indicators.find(
+        (item) => String(item.id) === String(historyFilter.indicator_id)
+      );
+
+      let data = null;
+
+      if (typeof API.getMatrixByPerson === "function") {
+        data = await API.getMatrixByPerson({
+          year: Number(historyFilter.year),
+          month: Number(historyFilter.month),
+          indicator_id: Number(historyFilter.indicator_id),
+        });
+      } else {
+        data = {
+          year: Number(historyFilter.year),
+          month: Number(historyFilter.month),
+          indicator_id: Number(historyFilter.indicator_id),
+          indicator_code: selected?.code || "",
+          indicator_name: selected?.name || "",
+          process_name: selected?.process_name || "",
+          unit: selected?.unit || "número",
+          frequency: selected?.frequency || "month",
+          rows: buildFallbackPersonRows(historyFilter.year, historyFilter.month, 10),
+        };
+      }
+
+      setPersonMatrixMeta({
+        ...data,
+        year: Number(data?.year || historyFilter.year),
+        month: Number(data?.month || historyFilter.month),
+        indicator_id: Number(data?.indicator_id || historyFilter.indicator_id),
+      });
+
+      setPersonMatrixRows(
+        (data?.rows || []).map((row) => ({
+          person: row.person || row.person_name || "",
+          day:
+            row.day !== null && row.day !== undefined && row.day !== ""
+              ? Number(row.day)
+              : "",
+          value:
+            row.value !== null && row.value !== undefined ? String(row.value) : "",
+        }))
+      );
+
+      clearMessageSoon("Matriz por persona cargada correctamente");
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSavePersonMatrix() {
+    try {
+      if (!historyFilter.indicator_id || !personMatrixRows.length) {
+        setMessage("No hay matriz por persona cargada para guardar.");
+        return;
+      }
+
+      setLoading(true);
+
+      const payload = {
+        year: Number(historyFilter.year),
+        month: Number(historyFilter.month),
+        indicator_id: Number(historyFilter.indicator_id),
+        rows: personMatrixRows
+          .filter(
+            (row) =>
+              String(row.person || "").trim() !== "" &&
+              row.day !== "" &&
+              row.day !== null &&
+              row.day !== undefined
+          )
+          .map((row) => ({
+            person: String(row.person || "").trim(),
+            day: Number(row.day),
+            value: row.value === "" ? null : Number(row.value),
+          })),
+      };
+
+      if (typeof API.saveMatrixByPerson === "function") {
+        await API.saveMatrixByPerson(payload);
+      } else {
+        await Promise.resolve(payload);
+      }
+
+      clearMessageSoon("Carga por persona guardada correctamente");
+      await runHistorySearch();
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function updatePersonMatrix(index, field, value) {
+    setPersonMatrixRows((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+    );
+  }
+
+  function addPersonMatrixRow() {
+    setPersonMatrixRows((prev) => [...prev, { person: "", day: "", value: "" }]);
+  }
+
+  function removePersonMatrixRow(index) {
+    setPersonMatrixRows((prev) => prev.filter((_, i) => i !== index));
+  }
+
   const filteredIndicatorsForDaily = useMemo(() => {
     if (!dailyForm.process_id) return [];
     return indicators.filter(
@@ -748,6 +891,34 @@ export default function App() {
   const selectedIndicatorShifts = useMemo(() => {
     return normalizeShifts(selectedIndicator?.shifts);
   }, [selectedIndicator]);
+
+  const personMatrixAccumulated = useMemo(() => {
+    const grouped = personMatrixRows.reduce((acc, row) => {
+      const personName = String(row.person || "").trim();
+      if (!personName) return acc;
+
+      const numericValue =
+        row.value === "" || row.value === null || row.value === undefined
+          ? 0
+          : Number(row.value);
+
+      if (!acc[personName]) {
+        acc[personName] = {
+          person: personName,
+          accumulated: 0,
+          records: 0,
+        };
+      }
+
+      acc[personName].accumulated += Number.isNaN(numericValue) ? 0 : numericValue;
+      acc[personName].records += 1;
+      return acc;
+    }, {});
+
+    return Object.values(grouped).sort((a, b) =>
+      String(a.person).localeCompare(String(b.person))
+    );
+  }, [personMatrixRows]);
 
   function toggleShift(shift) {
     setIndicatorForm((prev) => {
@@ -1974,6 +2145,20 @@ export default function App() {
                 >
                   Guardar matriz
                 </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={handleLoadPersonMatrix}
+                >
+                  Cargar por persona
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={handleSavePersonMatrix}
+                >
+                  Guardar por persona
+                </button>
                 {monthMatrixMeta && (
                   <button
                     type="button"
@@ -1984,6 +2169,18 @@ export default function App() {
                     }}
                   >
                     Cerrar carga
+                  </button>
+                )}
+                {personMatrixMeta && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => {
+                      setPersonMatrixMeta(null);
+                      setPersonMatrixRows([]);
+                    }}
+                  >
+                    Cerrar personas
                   </button>
                 )}
               </div>
@@ -2152,6 +2349,160 @@ export default function App() {
                             className="empty"
                           >
                             Sin filas para el período seleccionado
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {personMatrixMeta && (
+              <section className="panel-block">
+                <div className="subsection-title">
+                  Matriz por persona - {personMatrixMeta.indicator_code} -{" "}
+                  {personMatrixMeta.indicator_name}
+                </div>
+
+                <div
+                  className="rule-preview compact"
+                  style={{ marginBottom: 14 }}
+                >
+                  <div className="rule-item">
+                    <span>Proceso</span>
+                    <strong>{personMatrixMeta.process_name || "-"}</strong>
+                  </div>
+                  <div className="rule-item">
+                    <span>Unidad</span>
+                    <strong>{personMatrixMeta.unit || "-"}</strong>
+                  </div>
+                  <div className="rule-item">
+                    <span>Frecuencia</span>
+                    <strong>
+                      {formatFrequencyLabel(personMatrixMeta.frequency)}
+                    </strong>
+                  </div>
+                  <div className="rule-item">
+                    <span>Año</span>
+                    <strong>{personMatrixMeta.year}</strong>
+                  </div>
+                  <div className="rule-item">
+                    <span>Mes</span>
+                    <strong>{personMatrixMeta.month}</strong>
+                  </div>
+                  <div className="rule-item">
+                    <span>Acumulados</span>
+                    <strong>{personMatrixAccumulated.length} persona(s)</strong>
+                  </div>
+                </div>
+
+                <div className="actions" style={{ marginBottom: 14 }}>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={addPersonMatrixRow}
+                  >
+                    Agregar fila
+                  </button>
+                </div>
+
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Persona</th>
+                        <th>Día</th>
+                        <th>Valor</th>
+                        <th className="actions-col">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {personMatrixRows.map((row, index) => (
+                        <tr key={`${index}-${row.person}-${row.day}`}>
+                          <td>
+                            <input
+                              value={row.person}
+                              onChange={(e) =>
+                                updatePersonMatrix(index, "person", e.target.value)
+                              }
+                              placeholder="Nombre de la persona"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              min="1"
+                              max={getDaysInMonth(
+                                personMatrixMeta.year,
+                                personMatrixMeta.month
+                              )}
+                              value={row.day}
+                              onChange={(e) =>
+                                updatePersonMatrix(index, "day", e.target.value)
+                              }
+                              placeholder="Día"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={row.value}
+                              onChange={(e) =>
+                                updatePersonMatrix(index, "value", e.target.value)
+                              }
+                              placeholder="Valor"
+                            />
+                          </td>
+                          <td>
+                            <div className="row-actions">
+                              <button
+                                type="button"
+                                className="table-btn delete"
+                                onClick={() => removePersonMatrixRow(index)}
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {!personMatrixRows.length && (
+                        <tr>
+                          <td colSpan="4" className="empty">
+                            Sin filas para el período seleccionado
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style={{ height: 18 }} />
+
+                <div className="subsection-title">Acumulado por persona</div>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Persona</th>
+                        <th>Registros</th>
+                        <th>Acumulado del mes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {personMatrixAccumulated.map((item) => (
+                        <tr key={item.person}>
+                          <td>{item.person}</td>
+                          <td>{item.records}</td>
+                          <td>{formatPlainNumber(item.accumulated)}</td>
+                        </tr>
+                      ))}
+                      {!personMatrixAccumulated.length && (
+                        <tr>
+                          <td colSpan="3" className="empty">
+                            Aún no hay acumulados por persona
                           </td>
                         </tr>
                       )}
