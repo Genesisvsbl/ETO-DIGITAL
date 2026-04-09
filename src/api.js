@@ -11,7 +11,7 @@ async function request(path, options = {}) {
     let message = "Error en la solicitud";
     try {
       const data = await res.json();
-      message = data.detail || message;
+      message = data.detail || data.message || message;
     } catch {
       //
     }
@@ -105,7 +105,20 @@ const API = {
     return request(`/daily-records/by-date?${query.toString()}`);
   },
 
-  // 🔥 NUEVO: MATRIZ PARAMETRIZABLE (BASE DE TU REQUERIMIENTO)
+  getMonthMatrix: ({ indicator_id, year, month }) => {
+    const query = new URLSearchParams();
+    query.append("indicator_id", indicator_id);
+    query.append("year", year);
+    query.append("month", month);
+    return request(`/matrix/month?${query.toString()}`);
+  },
+
+  saveMonthMatrix: ({ indicator_id, rows }) =>
+    request("/matrix/month", {
+      method: "POST",
+      body: JSON.stringify({ indicator_id, rows }),
+    }),
+
   getMatrixByPerson: ({ indicator_id, year, month }) => {
     const query = new URLSearchParams();
     query.append("indicator_id", indicator_id);
@@ -114,11 +127,22 @@ const API = {
     return request(`/matrix/person?${query.toString()}`);
   },
 
-  saveMatrixByPerson: ({ indicator_id, rows }) =>
+  saveMatrixByPerson: ({ indicator_id, year, month, rows }) =>
     request("/matrix/person", {
       method: "POST",
-      body: JSON.stringify({ indicator_id, rows }),
+      body: JSON.stringify({ indicator_id, year, month, rows }),
     }),
+
+  getHistorySummary: ({ year, month, day, level, process_id, indicator_id }) => {
+    const query = new URLSearchParams();
+    if (year) query.append("year", year);
+    if (month) query.append("month", month);
+    if (day) query.append("day", day);
+    if (level) query.append("level", level);
+    if (process_id) query.append("process_id", process_id);
+    if (indicator_id) query.append("indicator_id", indicator_id);
+    return request(`/history/summary?${query.toString()}`);
+  },
 
   getHistory: ({ year, month, day, level, process_id, indicator_id }) => {
     const query = new URLSearchParams();
@@ -131,12 +155,13 @@ const API = {
     return request(`/history?${query.toString()}`);
   },
 
-  getDashboardOverview: ({ year, month, day, level }) => {
+  getDashboardOverview: ({ year, month, day, level, period }) => {
     const query = new URLSearchParams();
     if (year) query.append("year", year);
     if (month) query.append("month", month);
     if (day) query.append("day", day);
     if (level) query.append("level", level);
+    if (period) query.append("period", period);
     return request(`/dashboard/overview?${query.toString()}`);
   },
 
