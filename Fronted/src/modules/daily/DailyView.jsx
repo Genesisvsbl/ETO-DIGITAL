@@ -22,6 +22,29 @@ function buildStablePersonRowId(row, index) {
   return `row-${index}`;
 }
 
+function buildPersonCompliance(value, target) {
+  const numericTarget = Number(target || 0);
+  const numericValue =
+    value === "" || value === null || value === undefined ? 0 : Number(value);
+
+  let compliance = 0;
+
+  if (numericTarget > 0) {
+    compliance = Math.min((numericValue / numericTarget) * 100, 100);
+  } else {
+    compliance = 0;
+  }
+
+  let status = "critical";
+  if (compliance >= 100) status = "ok";
+  else if (compliance > 0) status = "warning";
+
+  return {
+    compliance,
+    status,
+  };
+}
+
 export default function DailyView({ accessLevel, processes, indicators }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -78,39 +101,62 @@ export default function DailyView({ accessLevel, processes, indicators }) {
       }
 
       try {
-        const grid = await API.getPersonCaptureGrid({
-          indicator_id: Number(dailyForm.indicator_id),
-          record_date: dailyForm.record_date,
-        });
+        const indicatorId = Number(dailyForm.indicator_id);
 
-        const rows = (grid.rows || []).map((row) => ({
-          __rowId: `person-${row.person_id}`,
-          person_id: Number(row.person_id),
-          person_code: row.person_code || "",
-          person_name: row.person_name || "",
-          target_value:
-            row.target_value !== null && row.target_value !== undefined
-              ? Number(row.target_value)
-              : Number(selectedIndicator?.target_value || 0),
-          value:
+        const [grid, targets] = await Promise.all([
+          API.getPersonCaptureGrid({
+            indicator_id: indicatorId,
+            record_date: dailyForm.record_date,
+          }),
+          API.getPersonTargets({
+            indicator_id: indicatorId,
+            active_only: true,
+          }),
+        ]);
+
+        const targetMap = new Map(
+          (targets || []).map((item) => [
+            Number(item.person_id),
+            Number(item.target_value || 0),
+          ])
+        );
+
+        const rows = (grid.rows || []).map((row) => {
+          const personId = Number(row.person_id);
+          const targetValue = Number(
+            targetMap.get(personId) ??
+              (row.target_value !== null && row.target_value !== undefined
+                ? row.target_value
+                : selectedIndicator?.target_value || 0)
+          );
+
+          const dayValue =
             row.day_value !== null && row.day_value !== undefined
-              ? String(row.day_value)
-              : "",
-          observation: row.observation || "",
-          accumulated:
-            row.accumulated !== null && row.accumulated !== undefined
-              ? Number(row.accumulated)
-              : 0,
-          remaining:
-            row.remaining !== null && row.remaining !== undefined
-              ? Number(row.remaining)
-              : 0,
-          compliance:
-            row.compliance !== null && row.compliance !== undefined
-              ? Number(row.compliance)
-              : 0,
-          status: row.status || "critical",
-        }));
+              ? Number(row.day_value)
+              : 0;
+
+          const { compliance, status } = buildPersonCompliance(dayValue, targetValue);
+
+          return {
+            __rowId: `person-${personId}`,
+            person_id: personId,
+            person_code: row.person_code || "",
+            person_name: row.person_name || "",
+            target_value: targetValue,
+            value:
+              row.day_value !== null && row.day_value !== undefined
+                ? String(row.day_value)
+                : "",
+            observation: row.observation || "",
+            accumulated:
+              row.accumulated !== null && row.accumulated !== undefined
+                ? Number(row.accumulated)
+                : 0,
+            remaining: Math.max(targetValue - dayValue, 0),
+            compliance,
+            status,
+          };
+        });
 
         setDailyPersonRows(rows);
       } catch (err) {
@@ -148,11 +194,18 @@ export default function DailyView({ accessLevel, processes, indicators }) {
     let totalCompliance = 0;
 
     rows.forEach((row) => {
-      const compliance = Number(row.compliance || 0);
+      const target = Number(row.target_value || 0);
+      const value =
+        row.value === "" || row.value === null || row.value === undefined
+          ? 0
+          : Number(row.value);
+
+      const { compliance, status } = buildPersonCompliance(value, target);
+
       totalCompliance += compliance;
 
-      if (row.status === "ok") okCount += 1;
-      else if (row.status === "warning") warningCount += 1;
+      if (status === "ok") okCount += 1;
+      else if (status === "warning") warningCount += 1;
       else criticalCount += 1;
     });
 
@@ -175,33 +228,19 @@ export default function DailyView({ accessLevel, processes, indicators }) {
           [field]: value,
         };
 
-        const target = Number(nextRow.target_value || selectedIndicator?.target_value || 0);
+        const target = Number(
+          nextRow.target_value || selectedIndicator?.target_value || 0
+        );
         const dayValue =
           nextRow.value === "" || nextRow.value === null || nextRow.value === undefined
             ? 0
             : Number(nextRow.value);
 
-        const accumulatedWithoutToday = Math.max(
-          Number(nextRow.accumulated || 0) - Number(row.value || 0),
-          0
-        );
-        const newAccumulated = accumulatedWithoutToday + (Number.isNaN(dayValue) ? 0 : dayValue);
-
-        let compliance = 0;
-        if (target > 0) {
-          compliance = Math.min((newAccumulated / target) * 100, 100);
-        } else {
-          compliance = newAccumulated > 0 ? 100 : 0;
-        }
-
-        let status = "critical";
-        if (compliance >= 100) status = "ok";
-        else if (compliance > 0) status = "warning";
+        const { compliance, status } = buildPersonCompliance(dayValue, target);
 
         return {
           ...nextRow,
-          accumulated: newAccumulated,
-          remaining: Math.max(target - newAccumulated, 0),
+          remaining: Math.max(target - dayValue, 0),
           compliance,
           status,
         };
@@ -288,26 +327,58 @@ export default function DailyView({ accessLevel, processes, indicators }) {
       setLoading(true);
 
       if (selectedIndicator?.scope_type === "person" && dailyForm.indicator_id) {
-        const grid = await API.getPersonCaptureGrid({
-          indicator_id: Number(dailyForm.indicator_id),
-          record_date: dailyForm.record_date,
-        });
+        const indicatorId = Number(dailyForm.indicator_id);
+
+        const [grid, targets] = await Promise.all([
+          API.getPersonCaptureGrid({
+            indicator_id: indicatorId,
+            record_date: dailyForm.record_date,
+          }),
+          API.getPersonTargets({
+            indicator_id: indicatorId,
+            active_only: true,
+          }),
+        ]);
+
+        const targetMap = new Map(
+          (targets || []).map((item) => [
+            Number(item.person_id),
+            Number(item.target_value || 0),
+          ])
+        );
 
         setDailyResults(
-          (grid.rows || []).map((item) => ({
-            id: `${item.person_id}-${dailyForm.record_date}`,
-            record_date: dailyForm.record_date,
-            indicator_code: selectedIndicator.code,
-            indicator_name: selectedIndicator.name,
-            process_name: selectedIndicator.process_name,
-            person_name: item.person_name,
-            person_code: item.person_code,
-            value: item.day_value,
-            general: item.compliance,
-            unit: "%",
-            status: item.status,
-            scope_type: "person",
-          }))
+          (grid.rows || []).map((item) => {
+            const personId = Number(item.person_id);
+            const targetValue = Number(
+              targetMap.get(personId) ??
+                (item.target_value !== null && item.target_value !== undefined
+                  ? item.target_value
+                  : selectedIndicator?.target_value || 0)
+            );
+
+            const dayValue =
+              item.day_value !== null && item.day_value !== undefined
+                ? Number(item.day_value)
+                : 0;
+
+            const { compliance, status } = buildPersonCompliance(dayValue, targetValue);
+
+            return {
+              id: `${item.person_id}-${dailyForm.record_date}`,
+              record_date: dailyForm.record_date,
+              indicator_code: selectedIndicator.code,
+              indicator_name: selectedIndicator.name,
+              process_name: selectedIndicator.process_name,
+              person_name: item.person_name,
+              person_code: item.person_code,
+              value: item.day_value,
+              general: compliance,
+              unit: "%",
+              status,
+              scope_type: "person",
+            };
+          })
         );
         return;
       }
