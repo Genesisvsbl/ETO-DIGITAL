@@ -8,12 +8,19 @@ print("👉 DATABASE_URL:", DATABASE_URL)
 
 if DATABASE_URL:
     print("🔥 Usando PostgreSQL (Neon)")
-    engine = create_engine(DATABASE_URL)
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_size=5,
+        max_overflow=10,
+    )
 else:
     print("⚠️ Usando SQLite local")
     engine = create_engine(
         "sqlite:///./eto_digital.db",
-        connect_args={"check_same_thread": False}
+        connect_args={"check_same_thread": False},
+        pool_pre_ping=True,
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
