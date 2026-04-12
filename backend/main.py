@@ -1141,11 +1141,24 @@ def get_month_matrix(
 
 @app.post("/daily-records/month")
 def save_month_matrix(payload: MonthlyRecordSave, db: Session = Depends(get_db)):
+    converted_rows = [
+        {
+            "record_date": row.record_date,
+            "single_value": row.single_value,
+            "shift_a": row.shift_a,
+            "shift_b": row.shift_b,
+            "shift_c": row.shift_c,
+            "observation": row.observation,
+        }
+        for row in payload.rows
+    ]
     return save_period_matrix(
-        payload=PeriodRecordSave(indicator_id=payload.indicator_id, rows=payload.rows),
-        db=db
+        payload=PeriodRecordSave(
+            indicator_id=payload.indicator_id,
+            rows=converted_rows,
+        ),
+        db=db,
     )
-
 
 @app.get("/history", response_model=list[DailyRecordOut])
 def get_history(
