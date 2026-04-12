@@ -32,7 +32,7 @@ function buildPersonCompliance(value, target) {
   if (numericTarget > 0) {
     compliance = Math.min((numericValue / numericTarget) * 100, 100);
   } else {
-    compliance = 0;
+    compliance = numericValue === 0 ? 100 : 0;
   }
 
   let status = "critical";
