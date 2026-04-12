@@ -22,7 +22,27 @@ async function request(path, options = {}) {
   return res.json();
 }
 
+function buildQuery(params = {}) {
+  const query = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (
+      value !== undefined &&
+      value !== null &&
+      value !== "" &&
+      !(typeof value === "boolean" && value === false)
+    ) {
+      query.append(key, value);
+    }
+  });
+
+  return query.toString();
+}
+
 const API = {
+  // -------------------------
+  // PROCESOS
+  // -------------------------
   getProcesses: (level) =>
     request(`/processes${level ? `?level=${level}` : ""}`),
 
@@ -43,11 +63,15 @@ const API = {
       method: "DELETE",
     }),
 
+  // -------------------------
+  // INDICADORES
+  // -------------------------
   getIndicators: (params = {}) => {
-    const query = new URLSearchParams();
-    if (params.process_id) query.append("process_id", params.process_id);
-    if (params.level) query.append("level", params.level);
-    const q = query.toString();
+    const q = buildQuery({
+      process_id: params.process_id,
+      level: params.level,
+      scope_type: params.scope_type,
+    });
     return request(`/indicators${q ? `?${q}` : ""}`);
   },
 
@@ -56,10 +80,15 @@ const API = {
       method: "POST",
       body: JSON.stringify({
         ...payload,
-        frequency: payload.frequency,
-        capture_mode: payload.capture_mode,
+        scope_type: payload.scope_type || "standard",
+        capture_mode:
+          payload.scope_type === "person"
+            ? "single"
+            : payload.capture_mode,
         shifts:
-          payload.capture_mode === "single" ? [] : payload.shifts || [],
+          payload.scope_type === "person" || payload.capture_mode === "single"
+            ? []
+            : payload.shifts || [],
       }),
     }),
 
@@ -68,10 +97,15 @@ const API = {
       method: "PUT",
       body: JSON.stringify({
         ...payload,
-        frequency: payload.frequency,
-        capture_mode: payload.capture_mode,
+        scope_type: payload.scope_type || "standard",
+        capture_mode:
+          payload.scope_type === "person"
+            ? "single"
+            : payload.capture_mode,
         shifts:
-          payload.capture_mode === "single" ? [] : payload.shifts || [],
+          payload.scope_type === "person" || payload.capture_mode === "single"
+            ? []
+            : payload.shifts || [],
       }),
     }),
 
@@ -80,6 +114,9 @@ const API = {
       method: "DELETE",
     }),
 
+  // -------------------------
+  // CAPTURA DIARIA ESTÁNDAR
+  // -------------------------
   saveDailyRecord: (payload) =>
     request("/daily-records", {
       method: "POST",
@@ -98,71 +135,168 @@ const API = {
     }),
 
   getDailyByDate: ({ record_date, process_id, level }) => {
-    const query = new URLSearchParams();
-    query.append("record_date", record_date);
-    if (process_id) query.append("process_id", process_id);
-    if (level) query.append("level", level);
-    return request(`/daily-records/by-date?${query.toString()}`);
+    const q = buildQuery({
+      record_date,
+      process_id,
+      level,
+    });
+    return request(`/daily-records/by-date?${q}`);
   },
 
+  // -------------------------
+  // MATRIZ / CARGA MASIVA ESTÁNDAR
+  // -------------------------
   getMonthMatrix: ({ indicator_id, year, month }) => {
-    const query = new URLSearchParams();
-    query.append("indicator_id", indicator_id);
-    query.append("year", year);
-    query.append("month", month);
-    return request(`/matrix/month?${query.toString()}`);
+    const q = buildQuery({
+      indicator_id,
+      year,
+      month,
+    });
+    return request(`/daily-records/month?${q}`);
   },
 
   saveMonthMatrix: ({ indicator_id, rows }) =>
-    request("/matrix/month", {
+    request("/daily-records/month", {
       method: "POST",
-      body: JSON.stringify({ indicator_id, rows }),
+      body: JSON.stringify({
+        indicator_id,
+        rows,
+      }),
     }),
 
-  getMatrixByPerson: ({ indicator_id, year, month }) => {
-    const query = new URLSearchParams();
-    query.append("indicator_id", indicator_id);
-    query.append("year", year);
-    query.append("month", month);
-    return request(`/matrix/person?${query.toString()}`);
+  // Alias por compatibilidad
+  getPeriodMatrix: ({ indicator_id, year, month }) =>
+    API.getMonthMatrix({ indicator_id, year, month }),
+
+  savePeriodMatrix: ({ indicator_id, rows }) =>
+    API.saveMonthMatrix({ indicator_id, rows }),
+
+  // -------------------------
+  // PERSONAS
+  // -------------------------
+  getPersons: ({ active_only } = {}) => {
+    const q = buildQuery({
+      active_only: active_only ? "true" : undefined,
+    });
+    return request(`/persons${q ? `?${q}` : ""}`);
   },
 
-  saveMatrixByPerson: ({ indicator_id, year, month, rows }) =>
-    request("/matrix/person", {
+  createPerson: (payload) =>
+    request("/persons", {
       method: "POST",
-      body: JSON.stringify({ indicator_id, year, month, rows }),
+      body: JSON.stringify(payload),
     }),
 
-  getHistorySummary: ({ year, month, day, level, process_id, indicator_id }) => {
-    const query = new URLSearchParams();
-    if (year) query.append("year", year);
-    if (month) query.append("month", month);
-    if (day) query.append("day", day);
-    if (level) query.append("level", level);
-    if (process_id) query.append("process_id", process_id);
-    if (indicator_id) query.append("indicator_id", indicator_id);
-    return request(`/history/summary?${query.toString()}`);
+  updatePerson: (id, payload) =>
+    request(`/persons/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
+  deletePerson: (id) =>
+    request(`/persons/${id}`, {
+      method: "DELETE",
+    }),
+
+  // -------------------------
+  // METAS POR PERSONA
+  // -------------------------
+  getPersonTargets: ({ indicator_id, person_id, active_only } = {}) => {
+    const q = buildQuery({
+      indicator_id,
+      person_id,
+      active_only: active_only ? "true" : undefined,
+    });
+    return request(`/person-indicator-targets${q ? `?${q}` : ""}`);
   },
 
+  createOrUpdatePersonTarget: (payload) =>
+    request("/person-indicator-targets", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  deletePersonTarget: (id) =>
+    request(`/person-indicator-targets/${id}`, {
+      method: "DELETE",
+    }),
+
+  // -------------------------
+  // CAPTURA POR PERSONA
+  // -------------------------
+  getPersonCaptureGrid: ({ indicator_id, record_date }) => {
+    const q = buildQuery({
+      indicator_id,
+      record_date,
+    });
+    return request(`/person-records/grid?${q}`);
+  },
+
+  savePersonGrid: ({ indicator_id, record_date, rows }) =>
+    request("/person-records/bulk", {
+      method: "POST",
+      body: JSON.stringify({
+        indicator_id,
+        record_date,
+        rows,
+      }),
+    }),
+
+  getPersonRecords: ({ indicator_id, person_id, year, month } = {}) => {
+    const q = buildQuery({
+      indicator_id,
+      person_id,
+      year,
+      month,
+    });
+    return request(`/person-records${q ? `?${q}` : ""}`);
+  },
+
+  // -------------------------
+  // HISTÓRICO
+  // -------------------------
   getHistory: ({ year, month, day, level, process_id, indicator_id }) => {
-    const query = new URLSearchParams();
-    if (year) query.append("year", year);
-    if (month) query.append("month", month);
-    if (day) query.append("day", day);
-    if (level) query.append("level", level);
-    if (process_id) query.append("process_id", process_id);
-    if (indicator_id) query.append("indicator_id", indicator_id);
-    return request(`/history?${query.toString()}`);
+    const q = buildQuery({
+      year,
+      month,
+      day,
+      level,
+      process_id,
+      indicator_id,
+    });
+    return request(`/history${q ? `?${q}` : ""}`);
   },
 
-  getDashboardOverview: ({ year, month, day, level, period }) => {
-    const query = new URLSearchParams();
-    if (year) query.append("year", year);
-    if (month) query.append("month", month);
-    if (day) query.append("day", day);
-    if (level) query.append("level", level);
-    if (period) query.append("period", period);
-    return request(`/dashboard/overview?${query.toString()}`);
+  getHistorySummary: ({
+    year,
+    month,
+    day,
+    level,
+    process_id,
+    indicator_id,
+  }) => {
+    const q = buildQuery({
+      year,
+      month,
+      day,
+      level,
+      process_id,
+      indicator_id,
+    });
+    return request(`/history/summary${q ? `?${q}` : ""}`);
+  },
+
+  // -------------------------
+  // DASHBOARD
+  // -------------------------
+  getDashboardOverview: ({ year, month, day, level }) => {
+    const q = buildQuery({
+      year,
+      month,
+      day,
+      level,
+    });
+    return request(`/dashboard/overview${q ? `?${q}` : ""}`);
   },
 
   getProcessDashboard: ({
@@ -174,15 +308,25 @@ const API = {
     level,
     period,
   }) => {
-    const query = new URLSearchParams();
-    query.append("process_id", process_id);
-    if (indicator_id) query.append("indicator_id", indicator_id);
-    if (year) query.append("year", year);
-    if (month) query.append("month", month);
-    if (day) query.append("day", day);
-    if (level) query.append("level", level);
-    if (period) query.append("period", period);
-    return request(`/dashboard/process?${query.toString()}`);
+    const q = buildQuery({
+      process_id,
+      indicator_id,
+      year,
+      month,
+      day,
+      level,
+      period,
+    });
+    return request(`/dashboard/process?${q}`);
+  },
+
+  getPersonDashboard: ({ indicator_id, year, month }) => {
+    const q = buildQuery({
+      indicator_id,
+      year,
+      month,
+    });
+    return request(`/dashboard/person?${q}`);
   },
 };
 
