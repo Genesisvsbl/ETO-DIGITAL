@@ -77,7 +77,7 @@ function CustomDailyTooltip({ active, payload, label, valueAxisLabel }) {
         borderRadius: 12,
         padding: "10px 12px",
         boxShadow: "0 12px 30px rgba(23,50,77,0.12)",
-        minWidth: 180,
+        minWidth: 220,
       }}
     >
       <div
@@ -89,32 +89,58 @@ function CustomDailyTooltip({ active, payload, label, valueAxisLabel }) {
       >
         {row.date || label}
       </div>
+
       <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 4 }}>
-        <strong>Valor:</strong> {formatPlainNumber(row.value || 0)} {valueAxisLabel}
+        <strong>Valor:</strong> {formatPlainNumber(Number(row.value || 0))}{" "}
+        {valueAxisLabel}
       </div>
+
       <div style={{ color: CHART_COLORS.text, fontSize: 13 }}>
-        <strong>Cumplimiento:</strong> {formatPercent(row.general || 0)}
+        <strong>Cumplimiento:</strong> {formatPercent(Number(row.general || 0))}
       </div>
     </div>
   );
 }
 
 function DailyPercentInsideBarLabel(props) {
-  const { x, y, width, payload } = props;
+  const { x, y, width, height, payload } = props;
   if (!payload) return null;
 
   const general = Number(payload.general || 0);
   const text = formatPercent(general);
   const safeWidth = Number(width || 0);
+  const safeHeight = Number(height || 0);
 
-  if (safeWidth < 22) return null;
+  if (safeWidth < 26 || safeHeight < 18) return null;
 
   return (
     <text
       x={x + safeWidth / 2}
-      y={y + 16}
+      y={y + Math.max(safeHeight / 2 + 4, 14)}
       textAnchor="middle"
       fill={CHART_COLORS.navy}
+      fontSize={11}
+      fontWeight={800}
+    >
+      {text}
+    </text>
+  );
+}
+
+function DailyValueTopLabel(props) {
+  const { x, y, width, payload } = props;
+  if (!payload) return null;
+
+  const value = Number(payload.value || 0);
+  const text = formatPlainNumber(value);
+  const safeWidth = Number(width || 0);
+
+  return (
+    <text
+      x={x + safeWidth / 2}
+      y={y - 6}
+      textAnchor="middle"
+      fill={CHART_COLORS.text}
       fontSize={11}
       fontWeight={800}
     >
@@ -147,14 +173,19 @@ function buildDailySeriesFromHistory(historyRows) {
   return sorted.map((item, index) => {
     const recordDate = String(item.record_date || "").slice(0, 10);
     const day = Number(recordDate.slice(8, 10)) || index + 1;
+    const realValue = Number(getMeasuredValueFromHistoryRow(item) || 0);
 
     return {
       date: recordDate,
       day,
       shortLabel: formatShortDate(recordDate),
-      value: Number(getMeasuredValueFromHistoryRow(item) || 0),
+      value: realValue,
       general: Number(item.general || 0),
       unit: item.unit || "",
+      single_value: item.single_value,
+      shift_a: item.shift_a,
+      shift_b: item.shift_b,
+      shift_c: item.shift_c,
     };
   });
 }
@@ -173,8 +204,8 @@ function renderTrendChart({
           data={processDailySeries}
           margin={
             expanded
-              ? { top: 26, right: 30, left: 10, bottom: 86 }
-              : { top: 18, right: 24, left: 8, bottom: 72 }
+              ? { top: 34, right: 30, left: 10, bottom: 86 }
+              : { top: 24, right: 24, left: 8, bottom: 72 }
           }
         >
           <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
@@ -242,6 +273,7 @@ function renderTrendChart({
             radius={[8, 8, 0, 0]}
             maxBarSize={expanded ? 46 : 34}
           >
+            <LabelList content={<DailyValueTopLabel />} />
             <LabelList content={<DailyPercentInsideBarLabel />} />
           </Bar>
 
@@ -461,6 +493,11 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       personCode: item.person_code,
     }));
   }, [dashboardData]);
+
+  const personDashboardChartHeight = useMemo(() => {
+    const rows = personDashboardBarData.length;
+    return Math.max(420, rows * 42);
+  }, [personDashboardBarData]);
 
   const processDailySeries = useMemo(() => {
     if (!dashboardData || dashboardData?.is_person_dashboard) return [];
@@ -808,73 +845,91 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                 <div className="subsection-title">
                   Avance por persona frente a la meta
                 </div>
-                <div className="chart-container large-executive-chart">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={personDashboardBarData}
-                      layout="vertical"
-                      margin={{ top: 18, right: 220, left: 18, bottom: 18 }}
-                    >
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke={CHART_COLORS.grid}
-                      />
-                      <XAxis type="number" allowDecimals={false} />
-                      <YAxis
-                        dataKey="name"
-                        type="category"
-                        width={150}
-                        tick={{ fill: CHART_COLORS.text, fontSize: 12 }}
-                      />
-                      <Tooltip
-                        formatter={(value, name) => {
-                          if (name === "Acumulado") return formatPlainNumber(value);
-                          if (name === "Pendiente") return formatPlainNumber(value);
-                          return value;
-                        }}
-                        labelFormatter={(label, payload) =>
-                          payload?.[0]?.payload?.fullName || label
-                        }
-                      />
-                      <Bar
-                        dataKey="acumulado"
-                        name="Acumulado"
-                        stackId="a"
-                        fill={CHART_COLORS.blue}
-                        radius={[8, 0, 0, 8]}
+
+                <div
+                  style={{
+                    maxHeight: 520,
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                    paddingRight: 6,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "100%",
+                      height: `${personDashboardChartHeight}px`,
+                      minHeight: 420,
+                    }}
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={personDashboardBarData}
+                        layout="vertical"
+                        margin={{ top: 18, right: 220, left: 18, bottom: 18 }}
+                        barCategoryGap={10}
                       >
-                        <LabelList
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke={CHART_COLORS.grid}
+                        />
+                        <XAxis type="number" allowDecimals={false} />
+                        <YAxis
+                          dataKey="name"
+                          type="category"
+                          width={150}
+                          interval={0}
+                          tick={{ fill: CHART_COLORS.text, fontSize: 12 }}
+                        />
+                        <Tooltip
+                          formatter={(value, name) => {
+                            if (name === "Acumulado") return formatPlainNumber(value);
+                            if (name === "Pendiente") return formatPlainNumber(value);
+                            return value;
+                          }}
+                          labelFormatter={(label, payload) =>
+                            payload?.[0]?.payload?.fullName || label
+                          }
+                        />
+                        <Bar
                           dataKey="acumulado"
-                          position="insideLeft"
-                          formatter={(value) => formatPlainNumber(value)}
-                          style={{
-                            fill: "#ffffff",
-                            fontWeight: 800,
-                            fontSize: 12,
-                          }}
-                        />
-                      </Bar>
-                      <Bar
-                        dataKey="pendiente"
-                        name="Pendiente"
-                        stackId="a"
-                        fill={CHART_COLORS.pending}
-                        radius={[0, 8, 8, 0]}
-                      >
-                        <LabelList
+                          name="Acumulado"
+                          stackId="a"
+                          fill={CHART_COLORS.blue}
+                          radius={[8, 0, 0, 8]}
+                        >
+                          <LabelList
+                            dataKey="acumulado"
+                            position="insideLeft"
+                            formatter={(value) => formatPlainNumber(value)}
+                            style={{
+                              fill: "#ffffff",
+                              fontWeight: 800,
+                              fontSize: 12,
+                            }}
+                          />
+                        </Bar>
+                        <Bar
                           dataKey="pendiente"
-                          position="insideRight"
-                          formatter={(value) => formatPlainNumber(value)}
-                          style={{
-                            fill: CHART_COLORS.text,
-                            fontWeight: 800,
-                            fontSize: 12,
-                          }}
-                        />
-                        <LabelList content={<PersonProgressLabel />} />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                          name="Pendiente"
+                          stackId="a"
+                          fill={CHART_COLORS.pending}
+                          radius={[0, 8, 8, 0]}
+                        >
+                          <LabelList
+                            dataKey="pendiente"
+                            position="insideRight"
+                            formatter={(value) => formatPlainNumber(value)}
+                            style={{
+                              fill: CHART_COLORS.text,
+                              fontWeight: 800,
+                              fontSize: 12,
+                            }}
+                          />
+                          <LabelList content={<PersonProgressLabel />} />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               </section>
 
@@ -1023,6 +1078,9 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       </span>
                       <span>
                         <strong>Línea:</strong> porcentaje de cumplimiento
+                      </span>
+                      <span>
+                        <strong>Número arriba:</strong> valor real diario
                       </span>
                       <span>
                         <strong>% dentro de barra:</strong> cumplimiento diario
@@ -1415,6 +1473,9 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               </span>
               <span>
                 <strong>Línea:</strong> % cumplimiento
+              </span>
+              <span>
+                <strong>Número arriba:</strong> valor real diario
               </span>
               <span>
                 <strong>% dentro de barra:</strong> cumplimiento diario
