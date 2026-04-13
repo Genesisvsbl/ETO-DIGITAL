@@ -33,6 +33,7 @@ const CHART_COLORS = {
   grid: "#d7e3f1",
   text: "#17324d",
   pending: "#dce7f8",
+  white: "#ffffff",
 };
 
 const PIE_COLORS = ["#133a6b", "#2459c3", "#6f97de"];
@@ -63,11 +64,211 @@ function PersonProgressLabel(props) {
   );
 }
 
+function CustomDailyTooltip({ active, payload, label, valueAxisLabel }) {
+  if (!active || !payload?.length) return null;
+
+  const row = payload[0]?.payload || {};
+
+  return (
+    <div
+      style={{
+        background: "#ffffff",
+        border: "1px solid #d7e3f1",
+        borderRadius: 12,
+        padding: "10px 12px",
+        boxShadow: "0 12px 30px rgba(23,50,77,0.12)",
+        minWidth: 180,
+      }}
+    >
+      <div
+        style={{
+          fontWeight: 800,
+          color: CHART_COLORS.text,
+          marginBottom: 6,
+        }}
+      >
+        {row.date || label}
+      </div>
+      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 4 }}>
+        <strong>Valor:</strong> {formatPlainNumber(row.value || 0)} {valueAxisLabel}
+      </div>
+      <div style={{ color: CHART_COLORS.text, fontSize: 13 }}>
+        <strong>Cumplimiento:</strong> {formatPercent(row.general || 0)}
+      </div>
+    </div>
+  );
+}
+
+function DailyPercentInsideBarLabel(props) {
+  const { x, y, width, payload } = props;
+  if (!payload) return null;
+
+  const general = Number(payload.general || 0);
+  const text = formatPercent(general);
+  const safeWidth = Number(width || 0);
+
+  if (safeWidth < 22) return null;
+
+  return (
+    <text
+      x={x + safeWidth / 2}
+      y={y + 16}
+      textAnchor="middle"
+      fill={CHART_COLORS.navy}
+      fontSize={11}
+      fontWeight={800}
+    >
+      {text}
+    </text>
+  );
+}
+
+function renderTrendChart({
+  isStandardIndicatorSelected,
+  processDailySeries,
+  dashboardData,
+  processValueAxisLabel,
+  expanded = false,
+}) {
+  if (isStandardIndicatorSelected) {
+    return (
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart
+          data={processDailySeries}
+          margin={
+            expanded
+              ? { top: 26, right: 30, left: 10, bottom: 86 }
+              : { top: 18, right: 24, left: 8, bottom: 72 }
+          }
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
+
+          <XAxis
+            dataKey="shortLabel"
+            interval={0}
+            angle={expanded ? -20 : -35}
+            textAnchor="end"
+            height={expanded ? 78 : 70}
+            tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
+          />
+
+          <YAxis
+            yAxisId="left"
+            tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
+            tickFormatter={(value) =>
+              Number.isInteger(value) ? `${value}` : Number(value).toFixed(2)
+            }
+            label={
+              expanded
+                ? {
+                    value: processValueAxisLabel,
+                    angle: -90,
+                    position: "insideLeft",
+                    fill: CHART_COLORS.text,
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }
+                : undefined
+            }
+          />
+
+          <YAxis
+            yAxisId="right"
+            orientation="right"
+            domain={[0, 100]}
+            tickFormatter={(value) => `${value}%`}
+            tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
+            label={
+              expanded
+                ? {
+                    value: "% Cumplimiento",
+                    angle: 90,
+                    position: "insideRight",
+                    fill: CHART_COLORS.text,
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }
+                : undefined
+            }
+          />
+
+          <Tooltip
+            content={
+              <CustomDailyTooltip valueAxisLabel={processValueAxisLabel} />
+            }
+          />
+
+          <Bar
+            yAxisId="left"
+            dataKey="value"
+            name={processValueAxisLabel}
+            fill={CHART_COLORS.blueSoft}
+            radius={[8, 8, 0, 0]}
+            maxBarSize={expanded ? 46 : 34}
+          >
+            <LabelList content={<DailyPercentInsideBarLabel />} />
+          </Bar>
+
+          <Line
+            yAxisId="right"
+            type="monotone"
+            dataKey="general"
+            name="% Cumplimiento"
+            stroke={CHART_COLORS.navy}
+            strokeWidth={3}
+            dot={{ r: expanded ? 4 : 3, fill: CHART_COLORS.navy }}
+            activeDot={{ r: expanded ? 6 : 5 }}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    );
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart
+        data={dashboardData.trend.map((item) => ({
+          ...item,
+          shortLabel: formatShortDate(item.label),
+        }))}
+        margin={{ top: 10, right: 20, left: 0, bottom: 70 }}
+      >
+        <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
+        <XAxis
+          dataKey="shortLabel"
+          interval={0}
+          angle={-45}
+          textAnchor="end"
+          height={70}
+          tick={{ fontSize: 11 }}
+        />
+        <YAxis tickFormatter={(value) => `${value}%`} />
+        <Tooltip
+          formatter={(value) => formatPercent(value)}
+          labelFormatter={(label, payload) =>
+            payload?.[0]?.payload?.label || label
+          }
+        />
+        <Line
+          type="monotone"
+          dataKey="value"
+          name="Promedio"
+          stroke={CHART_COLORS.navy}
+          strokeWidth={3}
+          dot={{ r: 4, fill: CHART_COLORS.navy }}
+          activeDot={{ r: 6 }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
 export default function DashboardView({ accessLevel, processes, indicators }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [dashboardOverview, setDashboardOverview] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
+  const [isTrendExpanded, setIsTrendExpanded] = useState(false);
 
   const [dashboardFilter, setDashboardFilter] = useState({
     process_id: "",
@@ -103,6 +304,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     try {
       setLoading(true);
       setMessage("");
+      setIsTrendExpanded(false);
 
       const filters = {
         ...dashboardFilter,
@@ -746,134 +948,60 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
 
               <div className="dashboard-process-grid premium-process-grid">
                 <section className="chart-card premium-chart-card">
-                  <div className="subsection-title">Tendencia general</div>
-                  <div className="chart-container executive-chart">
-                    <ResponsiveContainer width="100%" height="100%">
-                      {isStandardIndicatorSelected ? (
-                        <ComposedChart
-                          data={processDailySeries}
-                          margin={{ top: 16, right: 24, left: 8, bottom: 70 }}
-                        >
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            stroke={CHART_COLORS.grid}
-                          />
-                          <XAxis
-                            dataKey="shortLabel"
-                            interval={0}
-                            angle={-35}
-                            textAnchor="end"
-                            height={70}
-                            tick={{ fontSize: 11 }}
-                          />
-                          <YAxis
-                            yAxisId="left"
-                            tick={{ fontSize: 11 }}
-                            tickFormatter={(value) =>
-                              Number.isInteger(value)
-                                ? `${value}`
-                                : Number(value).toFixed(2)
-                            }
-                          />
-                          <YAxis
-                            yAxisId="right"
-                            orientation="right"
-                            domain={[0, 100]}
-                            tickFormatter={(value) => `${value}%`}
-                            tick={{ fontSize: 11 }}
-                          />
-                          <Tooltip
-                            formatter={(value, name) => {
-                              if (name === "% Cumplimiento") {
-                                return formatPercent(value);
-                              }
-                              return `${formatPlainNumber(value)} ${processValueAxisLabel}`;
-                            }}
-                            labelFormatter={(label, payload) =>
-                              payload?.[0]?.payload?.date || label
-                            }
-                          />
-                          <Bar
-                            yAxisId="left"
-                            dataKey="value"
-                            name={processValueAxisLabel}
-                            fill={CHART_COLORS.blueSoft}
-                            radius={[8, 8, 0, 0]}
-                            maxBarSize={34}
-                          >
-                            <LabelList
-                              dataKey="value"
-                              position="top"
-                              formatter={(value) => formatPlainNumber(value)}
-                              style={{
-                                fill: CHART_COLORS.text,
-                                fontWeight: 800,
-                                fontSize: 11,
-                              }}
-                            />
-                          </Bar>
-                          <Line
-                            yAxisId="right"
-                            type="monotone"
-                            dataKey="general"
-                            name="% Cumplimiento"
-                            stroke={CHART_COLORS.navy}
-                            strokeWidth={3}
-                            dot={{ r: 4, fill: CHART_COLORS.navy }}
-                            activeDot={{ r: 6 }}
-                          >
-                            <LabelList
-                              dataKey="general"
-                              position="top"
-                              formatter={(value) => formatPercent(value)}
-                              style={{
-                                fill: CHART_COLORS.navy,
-                                fontWeight: 800,
-                                fontSize: 11,
-                              }}
-                            />
-                          </Line>
-                        </ComposedChart>
-                      ) : (
-                        <LineChart
-                          data={dashboardData.trend.map((item) => ({
-                            ...item,
-                            shortLabel: formatShortDate(item.label),
-                          }))}
-                          margin={{ top: 10, right: 20, left: 0, bottom: 70 }}
-                        >
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            stroke={CHART_COLORS.grid}
-                          />
-                          <XAxis
-                            dataKey="shortLabel"
-                            interval={0}
-                            angle={-45}
-                            textAnchor="end"
-                            height={70}
-                            tick={{ fontSize: 11 }}
-                          />
-                          <YAxis tickFormatter={(value) => `${value}%`} />
-                          <Tooltip
-                            formatter={(value) => formatPercent(value)}
-                            labelFormatter={(label, payload) =>
-                              payload?.[0]?.payload?.label || label
-                            }
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="value"
-                            name="Promedio"
-                            stroke={CHART_COLORS.navy}
-                            strokeWidth={3}
-                            dot={{ r: 4, fill: CHART_COLORS.navy }}
-                            activeDot={{ r: 6 }}
-                          />
-                        </LineChart>
-                      )}
-                    </ResponsiveContainer>
+                  <div
+                    className="subsection-title"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                    }}
+                  >
+                    <span>Tendencia general</span>
+
+                    {isStandardIndicatorSelected && !!processDailySeries.length && (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => setIsTrendExpanded(true)}
+                      >
+                        Ampliar gráfica
+                      </button>
+                    )}
                   </div>
+
+                  <div className="chart-container executive-chart">
+                    {renderTrendChart({
+                      isStandardIndicatorSelected,
+                      processDailySeries,
+                      dashboardData,
+                      processValueAxisLabel,
+                      expanded: false,
+                    })}
+                  </div>
+
+                  {isStandardIndicatorSelected && !!processDailySeries.length && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        display: "flex",
+                        gap: 16,
+                        flexWrap: "wrap",
+                        fontSize: 12,
+                        color: CHART_COLORS.text,
+                      }}
+                    >
+                      <span>
+                        <strong>Barras:</strong> valor real por día
+                      </span>
+                      <span>
+                        <strong>Línea:</strong> porcentaje de cumplimiento
+                      </span>
+                      <span>
+                        <strong>% dentro de barra:</strong> cumplimiento diario
+                      </span>
+                    </div>
+                  )}
                 </section>
 
                 <section className="chart-card premium-chart-card donut-card">
@@ -1167,6 +1295,116 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
             </>
           )}
         </>
+      )}
+
+      {isTrendExpanded && isStandardIndicatorSelected && !!processDailySeries.length && (
+        <div
+          onClick={() => setIsTrendExpanded(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 31, 53, 0.55)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(1200px, 96vw)",
+              height: "min(760px, 92vh)",
+              background: "#ffffff",
+              borderRadius: 24,
+              boxShadow: "0 30px 80px rgba(10, 28, 48, 0.28)",
+              border: "1px solid #d7e3f1",
+              padding: 20,
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    letterSpacing: "0.08em",
+                    color: "#6b7c93",
+                    textTransform: "uppercase",
+                    marginBottom: 4,
+                  }}
+                >
+                  Tendencia ampliada
+                </div>
+                <h3
+                  style={{
+                    margin: 0,
+                    color: CHART_COLORS.text,
+                    fontSize: 28,
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {selectedDashboardIndicator?.code} - {selectedDashboardIndicator?.name}
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setIsTrendExpanded(false)}
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 18,
+                flexWrap: "wrap",
+                fontSize: 13,
+                color: CHART_COLORS.text,
+              }}
+            >
+              <span>
+                <strong>Proceso:</strong> {dashboardData?.process?.name}
+              </span>
+              <span>
+                <strong>Unidad:</strong> {processValueAxisLabel}
+              </span>
+              <span>
+                <strong>Barras:</strong> valor por día
+              </span>
+              <span>
+                <strong>Línea:</strong> % cumplimiento
+              </span>
+              <span>
+                <strong>% dentro de barra:</strong> cumplimiento diario
+              </span>
+            </div>
+
+            <div style={{ flex: 1, minHeight: 0 }}>
+              {renderTrendChart({
+                isStandardIndicatorSelected,
+                processDailySeries,
+                dashboardData,
+                processValueAxisLabel,
+                expanded: true,
+              })}
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );
