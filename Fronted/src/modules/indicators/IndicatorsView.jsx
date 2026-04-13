@@ -78,16 +78,20 @@ export default function IndicatorsView({
 
   const visiblePersons = useMemo(() => {
     const query = String(personFilter || "").trim().toLowerCase();
+
     const usedIds = new Set(
-      (selectedIndicatorPersonTargets || []).map((item) => Number(item.person_id))
+      (selectedIndicatorPersonTargets || [])
+        .map((item) => Number(item.person_id))
+        .filter((value) => !Number.isNaN(value))
     );
 
     return (persons || []).filter((item) => {
       const fullName = String(item.full_name || item.name || "").toLowerCase();
       const code = String(item.code || "").toLowerCase();
       const matches = !query || fullName.includes(query) || code.includes(query);
+      const personId = Number(item.id);
 
-      return matches && !usedIds.has(Number(item.id));
+      return matches && !usedIds.has(personId);
     });
   }, [personFilter, persons, selectedIndicatorPersonTargets]);
 
@@ -180,7 +184,8 @@ export default function IndicatorsView({
                   setIndicatorForm({
                     ...indicatorForm,
                     scope_type: e.target.value,
-                    capture_mode: e.target.value === "person" ? "single" : "shifts",
+                    capture_mode:
+                      e.target.value === "person" ? "single" : "shifts",
                     shifts: e.target.value === "person" ? [] : ["A", "B", "C"],
                   })
                 }
@@ -211,7 +216,9 @@ export default function IndicatorsView({
               <div className="field">
                 <label>Modo de captura</label>
                 <select
-                  value={isPersonIndicatorForm ? "single" : indicatorForm.capture_mode}
+                  value={
+                    isPersonIndicatorForm ? "single" : indicatorForm.capture_mode
+                  }
                   onChange={(e) =>
                     setIndicatorForm({
                       ...indicatorForm,
@@ -368,8 +375,8 @@ export default function IndicatorsView({
 
             {indicatorForm.scope_type === "person" && (
               <div className="alert" style={{ marginBottom: 14 }}>
-                Este indicador será capturado solo por persona. No usará turnos ni
-                valor único estándar.
+                Este indicador será capturado solo por persona. No usará turnos
+                ni valor único estándar.
               </div>
             )}
 
@@ -382,7 +389,9 @@ export default function IndicatorsView({
                       <label key={shift} className="check">
                         <input
                           type="checkbox"
-                          checked={normalizeShifts(indicatorForm.shifts).includes(shift)}
+                          checked={normalizeShifts(indicatorForm.shifts).includes(
+                            shift
+                          )}
                           onChange={() => toggleShift(shift)}
                         />
                         {shift}
@@ -441,10 +450,30 @@ export default function IndicatorsView({
                     <td>{formatFrequencyLabel(item.frequency)}</td>
                     <td>{formatCaptureModeLabel(item.capture_mode)}</td>
                     <td>{item.unit}</td>
-                    <td>{formatRule(item.target_operator, item.target_value, item.unit)}</td>
-                    <td>{formatRule(item.warning_operator, item.warning_value, item.unit)}</td>
-                    <td>{formatRule(item.critical_operator, item.critical_value, item.unit)}</td>
-                    <td>{item.scope_type === "person" ? "Por persona" : "Estándar"}</td>
+                    <td>
+                      {formatRule(
+                        item.target_operator,
+                        item.target_value,
+                        item.unit
+                      )}
+                    </td>
+                    <td>
+                      {formatRule(
+                        item.warning_operator,
+                        item.warning_value,
+                        item.unit
+                      )}
+                    </td>
+                    <td>
+                      {formatRule(
+                        item.critical_operator,
+                        item.critical_value,
+                        item.unit
+                      )}
+                    </td>
+                    <td>
+                      {item.scope_type === "person" ? "Por persona" : "Estándar"}
+                    </td>
                     <td>
                       {item.capture_mode === "single"
                         ? "-"
@@ -592,12 +621,15 @@ export default function IndicatorsView({
             </div>
 
             <div className="panel-block" style={{ margin: 0 }}>
-              <div className="subsection-title">Asociar persona al indicador</div>
+              <div className="subsection-title">
+                Asociar persona al indicador
+              </div>
 
               <div
                 className="inline-form-grid"
                 style={{
-                  gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(160px, 0.8fr)",
+                  gridTemplateColumns:
+                    "minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(160px, 0.8fr)",
                   gap: 14,
                   marginBottom: 14,
                 }}
@@ -633,7 +665,12 @@ export default function IndicatorsView({
                     step="0.01"
                     value={selectedPersonTargetValue}
                     onChange={(e) => setSelectedPersonTargetValue(e.target.value)}
-                    placeholder="Opcional"
+                    placeholder={
+                      selectedIndicatorForPersons?.target_value !== undefined &&
+                      selectedIndicatorForPersons?.target_value !== null
+                        ? `Base: ${selectedIndicatorForPersons.target_value}`
+                        : "Opcional"
+                    }
                   />
                 </div>
               </div>
@@ -647,6 +684,13 @@ export default function IndicatorsView({
                   Agregar persona
                 </button>
               </div>
+
+              {!visiblePersons.length && (
+                <div className="alert" style={{ marginTop: 14 }}>
+                  No hay personas disponibles para asociar con el filtro actual
+                  o todas ya fueron asociadas.
+                </div>
+              )}
             </div>
           </div>
 
@@ -663,7 +707,7 @@ export default function IndicatorsView({
               </thead>
               <tbody>
                 {selectedIndicatorPersonTargets.map((item, index) => (
-                  <tr key={item.id || index}>
+                  <tr key={item.id || `${item.person_id}-${index}`}>
                     <td>{item.person_code}</td>
                     <td>{item.person_name}</td>
                     <td>{item.target_value ?? 0}</td>
