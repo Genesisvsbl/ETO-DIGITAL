@@ -123,6 +123,42 @@ function DailyPercentInsideBarLabel(props) {
   );
 }
 
+function getMeasuredValueFromHistoryRow(row) {
+  if (!row) return 0;
+
+  if (row.capture_mode === "single") {
+    return Number(row.single_value || 0);
+  }
+
+  const values = [];
+  if (row.shift_a !== null && row.shift_a !== undefined) values.push(Number(row.shift_a));
+  if (row.shift_b !== null && row.shift_b !== undefined) values.push(Number(row.shift_b));
+  if (row.shift_c !== null && row.shift_c !== undefined) values.push(Number(row.shift_c));
+
+  if (!values.length) return 0;
+  return values.reduce((acc, val) => acc + val, 0) / values.length;
+}
+
+function buildDailySeriesFromHistory(historyRows) {
+  const sorted = [...(historyRows || [])].sort(
+    (a, b) => new Date(a.record_date) - new Date(b.record_date)
+  );
+
+  return sorted.map((item, index) => {
+    const recordDate = String(item.record_date || "").slice(0, 10);
+    const day = Number(recordDate.slice(8, 10)) || index + 1;
+
+    return {
+      date: recordDate,
+      day,
+      shortLabel: formatShortDate(recordDate),
+      value: Number(getMeasuredValueFromHistoryRow(item) || 0),
+      general: Number(item.general || 0),
+      unit: item.unit || "",
+    };
+  });
+}
+
 function renderTrendChart({
   isStandardIndicatorSelected,
   processDailySeries,
@@ -268,6 +304,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
   const [message, setMessage] = useState("");
   const [dashboardOverview, setDashboardOverview] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
+  const [indicatorHistoryRows, setIndicatorHistoryRows] = useState([]);
   const [isTrendExpanded, setIsTrendExpanded] = useState(false);
 
   const [dashboardFilter, setDashboardFilter] = useState({
@@ -305,6 +342,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       setLoading(true);
       setMessage("");
       setIsTrendExpanded(false);
+      setIndicatorHistoryRows([]);
 
       const filters = {
         ...dashboardFilter,
@@ -339,16 +377,35 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       }
 
       if (filters.process_id) {
-        const data = await API.getProcessDashboard(filters);
+        const requests = [API.getProcessDashboard(filters)];
+
+        if (filters.indicator_id && isStandardIndicatorSelected) {
+          requests.push(
+            API.getHistory({
+              year: filters.year ? Number(filters.year) : undefined,
+              month: filters.month ? Number(filters.month) : undefined,
+              day: filters.day ? Number(filters.day) : undefined,
+              level: Number(accessLevel),
+              process_id: Number(filters.process_id),
+              indicator_id: Number(filters.indicator_id),
+            })
+          );
+        }
+
+        const [processData, historyData] = await Promise.all(requests);
+
         setDashboardData({
-          ...data,
+          ...processData,
           is_person_dashboard: false,
         });
+
+        setIndicatorHistoryRows(Array.isArray(historyData) ? historyData : []);
         setDashboardOverview(null);
       } else {
         const overview = await API.getDashboardOverview(filters);
         setDashboardOverview(overview);
         setDashboardData(null);
+        setIndicatorHistoryRows([]);
       }
     } catch (err) {
       setMessage(err.message);
@@ -408,45 +465,20 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
   const processDailySeries = useMemo(() => {
     if (!dashboardData || dashboardData?.is_person_dashboard) return [];
 
-    const source = Array.isArray(dashboardData.daily_series)
-      ? dashboardData.daily_series
-      : Array.isArray(dashboardData.trend)
-      ? dashboardData.trend.map((item) => ({
-          date: item.label,
-          day: Number(String(item.label || "").slice(8, 10)) || item.label,
-          value: Number(item.value || 0),
-          general: Number(item.value || 0),
-        }))
-      : [];
+    if (isStandardIndicatorSelected && indicatorHistoryRows.length) {
+      return buildDailySeriesFromHistory(indicatorHistoryRows);
+    }
 
-    return source
-      .map((item, index) => {
-        const rawDate = item.date || item.label || "";
-        const dayFromDate = Number(String(rawDate).slice(8, 10));
-        const safeDay =
-          Number(item.day) || (!Number.isNaN(dayFromDate) ? dayFromDate : index + 1);
-
-        const numericValue =
-          item.value !== null && item.value !== undefined
-            ? Number(item.value)
-            : 0;
-
-        const numericGeneral =
-          item.general !== null && item.general !== undefined
-            ? Number(item.general)
-            : 0;
-
-        return {
-          ...item,
-          date: rawDate,
-          day: safeDay,
-          shortLabel: rawDate ? formatShortDate(rawDate) : `${safeDay}`,
-          value: Number.isNaN(numericValue) ? 0 : numericValue,
-          general: Number.isNaN(numericGeneral) ? 0 : numericGeneral,
-        };
-      })
+    return (dashboardData?.trend || [])
+      .map((item, index) => ({
+        date: item.label,
+        day: Number(String(item.label || "").slice(8, 10)) || index + 1,
+        shortLabel: formatShortDate(item.label),
+        value: Number(item.value || 0),
+        general: Number(item.value || 0),
+      }))
       .sort((a, b) => Number(a.day) - Number(b.day));
-  }, [dashboardData]);
+  }, [dashboardData, indicatorHistoryRows, isStandardIndicatorSelected]);
 
   const processValueAxisLabel = useMemo(() => {
     if (!selectedDashboardIndicator) return "Valor";
@@ -782,7 +814,6 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       data={personDashboardBarData}
                       layout="vertical"
                       margin={{ top: 18, right: 220, left: 18, bottom: 18 }}
-                      barCategoryGap={20}
                     >
                       <CartesianGrid
                         strokeDasharray="3 3"
@@ -797,12 +828,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       />
                       <Tooltip
                         formatter={(value, name) => {
-                          if (name === "Acumulado") {
-                            return formatPlainNumber(value);
-                          }
-                          if (name === "Pendiente") {
-                            return formatPlainNumber(value);
-                          }
+                          if (name === "Acumulado") return formatPlainNumber(value);
+                          if (name === "Pendiente") return formatPlainNumber(value);
                           return value;
                         }}
                         labelFormatter={(label, payload) =>
