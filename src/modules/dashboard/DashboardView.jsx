@@ -86,6 +86,17 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     );
   }, [dashboardFilter.process_id, indicators]);
 
+  const selectedDashboardIndicator = useMemo(() => {
+    if (!dashboardFilter.indicator_id) return null;
+    return indicators.find(
+      (item) => String(item.id) === String(dashboardFilter.indicator_id)
+    );
+  }, [dashboardFilter.indicator_id, indicators]);
+
+  const isStandardIndicatorSelected =
+    !!selectedDashboardIndicator &&
+    selectedDashboardIndicator.scope_type !== "person";
+
   async function handleLoadDashboard(e) {
     if (e) e.preventDefault();
 
@@ -99,11 +110,11 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       };
 
       if (filters.indicator_id) {
-        const selectedDashboardIndicator = indicators.find(
+        const selectedIndicator = indicators.find(
           (item) => String(item.id) === String(filters.indicator_id)
         );
 
-        if (selectedDashboardIndicator?.scope_type === "person") {
+        if (selectedIndicator?.scope_type === "person") {
           if (!filters.year || !filters.month) {
             throw new Error(
               "Para dashboard por persona debes seleccionar año y mes."
@@ -191,6 +202,54 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       personCode: item.person_code,
     }));
   }, [dashboardData]);
+
+  const processDailySeries = useMemo(() => {
+    if (!dashboardData || dashboardData?.is_person_dashboard) return [];
+
+    const source = Array.isArray(dashboardData.daily_series)
+      ? dashboardData.daily_series
+      : Array.isArray(dashboardData.trend)
+      ? dashboardData.trend.map((item) => ({
+          date: item.label,
+          day: Number(String(item.label || "").slice(8, 10)) || item.label,
+          value: Number(item.value || 0),
+          general: Number(item.value || 0),
+        }))
+      : [];
+
+    return source
+      .map((item, index) => {
+        const rawDate = item.date || item.label || "";
+        const dayFromDate = Number(String(rawDate).slice(8, 10));
+        const safeDay =
+          Number(item.day) || (!Number.isNaN(dayFromDate) ? dayFromDate : index + 1);
+
+        const numericValue =
+          item.value !== null && item.value !== undefined
+            ? Number(item.value)
+            : 0;
+
+        const numericGeneral =
+          item.general !== null && item.general !== undefined
+            ? Number(item.general)
+            : 0;
+
+        return {
+          ...item,
+          date: rawDate,
+          day: safeDay,
+          shortLabel: rawDate ? formatShortDate(rawDate) : `${safeDay}`,
+          value: Number.isNaN(numericValue) ? 0 : numericValue,
+          general: Number.isNaN(numericGeneral) ? 0 : numericGeneral,
+        };
+      })
+      .sort((a, b) => Number(a.day) - Number(b.day));
+  }, [dashboardData]);
+
+  const processValueAxisLabel = useMemo(() => {
+    if (!selectedDashboardIndicator) return "Valor";
+    return selectedDashboardIndicator.unit || "Valor";
+  }, [selectedDashboardIndicator]);
 
   return (
     <section className="content-card dashboard-master-card">
@@ -690,42 +749,129 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   <div className="subsection-title">Tendencia general</div>
                   <div className="chart-container executive-chart">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={dashboardData.trend.map((item) => ({
-                          ...item,
-                          shortLabel: formatShortDate(item.label),
-                        }))}
-                        margin={{ top: 10, right: 20, left: 0, bottom: 70 }}
-                      >
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke={CHART_COLORS.grid}
-                        />
-                        <XAxis
-                          dataKey="shortLabel"
-                          interval={0}
-                          angle={-45}
-                          textAnchor="end"
-                          height={70}
-                          tick={{ fontSize: 11 }}
-                        />
-                        <YAxis tickFormatter={(value) => `${value}%`} />
-                        <Tooltip
-                          formatter={(value) => formatPercent(value)}
-                          labelFormatter={(label, payload) =>
-                            payload?.[0]?.payload?.label || label
-                          }
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="value"
-                          name="Promedio"
-                          stroke={CHART_COLORS.navy}
-                          strokeWidth={3}
-                          dot={{ r: 4, fill: CHART_COLORS.navy }}
-                          activeDot={{ r: 6 }}
-                        />
-                      </LineChart>
+                      {isStandardIndicatorSelected ? (
+                        <ComposedChart
+                          data={processDailySeries}
+                          margin={{ top: 16, right: 24, left: 8, bottom: 70 }}
+                        >
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke={CHART_COLORS.grid}
+                          />
+                          <XAxis
+                            dataKey="shortLabel"
+                            interval={0}
+                            angle={-35}
+                            textAnchor="end"
+                            height={70}
+                            tick={{ fontSize: 11 }}
+                          />
+                          <YAxis
+                            yAxisId="left"
+                            tick={{ fontSize: 11 }}
+                            tickFormatter={(value) =>
+                              Number.isInteger(value)
+                                ? `${value}`
+                                : Number(value).toFixed(2)
+                            }
+                          />
+                          <YAxis
+                            yAxisId="right"
+                            orientation="right"
+                            domain={[0, 100]}
+                            tickFormatter={(value) => `${value}%`}
+                            tick={{ fontSize: 11 }}
+                          />
+                          <Tooltip
+                            formatter={(value, name) => {
+                              if (name === "% Cumplimiento") {
+                                return formatPercent(value);
+                              }
+                              return `${formatPlainNumber(value)} ${processValueAxisLabel}`;
+                            }}
+                            labelFormatter={(label, payload) =>
+                              payload?.[0]?.payload?.date || label
+                            }
+                          />
+                          <Bar
+                            yAxisId="left"
+                            dataKey="value"
+                            name={processValueAxisLabel}
+                            fill={CHART_COLORS.blueSoft}
+                            radius={[8, 8, 0, 0]}
+                            maxBarSize={34}
+                          >
+                            <LabelList
+                              dataKey="value"
+                              position="top"
+                              formatter={(value) => formatPlainNumber(value)}
+                              style={{
+                                fill: CHART_COLORS.text,
+                                fontWeight: 800,
+                                fontSize: 11,
+                              }}
+                            />
+                          </Bar>
+                          <Line
+                            yAxisId="right"
+                            type="monotone"
+                            dataKey="general"
+                            name="% Cumplimiento"
+                            stroke={CHART_COLORS.navy}
+                            strokeWidth={3}
+                            dot={{ r: 4, fill: CHART_COLORS.navy }}
+                            activeDot={{ r: 6 }}
+                          >
+                            <LabelList
+                              dataKey="general"
+                              position="top"
+                              formatter={(value) => formatPercent(value)}
+                              style={{
+                                fill: CHART_COLORS.navy,
+                                fontWeight: 800,
+                                fontSize: 11,
+                              }}
+                            />
+                          </Line>
+                        </ComposedChart>
+                      ) : (
+                        <LineChart
+                          data={dashboardData.trend.map((item) => ({
+                            ...item,
+                            shortLabel: formatShortDate(item.label),
+                          }))}
+                          margin={{ top: 10, right: 20, left: 0, bottom: 70 }}
+                        >
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke={CHART_COLORS.grid}
+                          />
+                          <XAxis
+                            dataKey="shortLabel"
+                            interval={0}
+                            angle={-45}
+                            textAnchor="end"
+                            height={70}
+                            tick={{ fontSize: 11 }}
+                          />
+                          <YAxis tickFormatter={(value) => `${value}%`} />
+                          <Tooltip
+                            formatter={(value) => formatPercent(value)}
+                            labelFormatter={(label, payload) =>
+                              payload?.[0]?.payload?.label || label
+                            }
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            name="Promedio"
+                            stroke={CHART_COLORS.navy}
+                            strokeWidth={3}
+                            dot={{ r: 4, fill: CHART_COLORS.navy }}
+                            activeDot={{ r: 6 }}
+                          />
+                        </LineChart>
+                      )}
                     </ResponsiveContainer>
                   </div>
                 </section>

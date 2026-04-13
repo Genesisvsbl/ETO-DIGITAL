@@ -112,10 +112,13 @@ export default function App() {
   const [indicatorForm, setIndicatorForm] = useState(EMPTY_INDICATOR_FORM);
   const [personForm, setPersonForm] = useState(EMPTY_PERSON_FORM);
 
-  const [selectedIndicatorForPersons, setSelectedIndicatorForPersons] = useState(null);
-  const [selectedIndicatorPersonTargets, setSelectedIndicatorPersonTargets] = useState([]);
+  const [selectedIndicatorForPersons, setSelectedIndicatorForPersons] =
+    useState(null);
+  const [selectedIndicatorPersonTargets, setSelectedIndicatorPersonTargets] =
+    useState([]);
   const [selectedPersonId, setSelectedPersonId] = useState("");
-  const [selectedPersonTargetValue, setSelectedPersonTargetValue] = useState("");
+  const [selectedPersonTargetValue, setSelectedPersonTargetValue] =
+    useState("");
 
   useEffect(() => {
     if (isAuthorized && accessLevel) {
@@ -411,6 +414,7 @@ export default function App() {
 
       const targets = await API.getPersonTargets({
         indicator_id: indicator.id,
+        active_only: true,
       });
 
       setSelectedIndicatorPersonTargets(targets || []);
@@ -428,22 +432,41 @@ export default function App() {
     try {
       setLoading(true);
 
-      if (!String(personForm.full_name || "").trim()) {
-        throw new Error("Debes ingresar el nombre de la persona");
-      }
-
-      const created = await API.createPerson({
+      const payload = {
         code: String(personForm.code || "").trim(),
         full_name: String(personForm.full_name || "").trim(),
         is_active: Boolean(personForm.is_active),
-      });
+      };
 
-      await loadPersons();
+      if (!payload.full_name) {
+        throw new Error("Debes ingresar el nombre de la persona");
+      }
+
+      const created = await API.createPerson(payload);
+      const personList = await loadPersons();
 
       setPersonForm(EMPTY_PERSON_FORM);
 
       if (created?.id) {
         setSelectedPersonId(String(created.id));
+      } else {
+        const matchedPerson = personList.find((item) => {
+          const sameCode =
+            payload.code &&
+            String(item.code || "").trim().toLowerCase() ===
+              payload.code.toLowerCase();
+
+          const sameName =
+            String(item.full_name || item.name || "")
+              .trim()
+              .toLowerCase() === payload.full_name.toLowerCase();
+
+          return sameCode || sameName;
+        });
+
+        if (matchedPerson?.id) {
+          setSelectedPersonId(String(matchedPerson.id));
+        }
       }
 
       clearMessageSoon("Persona creada correctamente");
@@ -470,14 +493,16 @@ export default function App() {
         indicator_id: Number(selectedIndicatorForPersons.id),
         person_id: Number(selectedPersonId),
         target_value:
-          selectedPersonTargetValue === "" || selectedPersonTargetValue === null
-            ? 0
+          selectedPersonTargetValue === "" ||
+          selectedPersonTargetValue === null
+            ? Number(selectedIndicatorForPersons.target_value || 0)
             : Number(selectedPersonTargetValue),
         is_active: true,
       });
 
       const targets = await API.getPersonTargets({
         indicator_id: selectedIndicatorForPersons.id,
+        active_only: true,
       });
 
       setSelectedIndicatorPersonTargets(targets || []);
@@ -493,7 +518,9 @@ export default function App() {
 
   async function handleDeletePersonTarget(item) {
     const ok = window.confirm(
-      `¿Deseas quitar a "${item.person_name}" del indicador "${selectedIndicatorForPersons?.name || ""}"?`
+      `¿Deseas quitar a "${item.person_name}" del indicador "${
+        selectedIndicatorForPersons?.name || ""
+      }"?`
     );
     if (!ok) return;
 
@@ -504,6 +531,7 @@ export default function App() {
       if (selectedIndicatorForPersons?.id) {
         const targets = await API.getPersonTargets({
           indicator_id: selectedIndicatorForPersons.id,
+          active_only: true,
         });
         setSelectedIndicatorPersonTargets(targets || []);
       }
