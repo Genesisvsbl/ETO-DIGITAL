@@ -1,5 +1,4 @@
-const API_URL =
-  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+const API_URL = import.meta.env.VITE_API_URL;
 
 async function request(path, options = {}) {
   const res = await fetch(`${API_URL}${path}`, {
@@ -40,9 +39,6 @@ function buildQuery(params = {}) {
 }
 
 const API = {
-  // -------------------------
-  // PROCESOS
-  // -------------------------
   getProcesses: (level) =>
     request(`/processes${level ? `?level=${level}` : ""}`),
 
@@ -63,9 +59,6 @@ const API = {
       method: "DELETE",
     }),
 
-  // -------------------------
-  // INDICADORES
-  // -------------------------
   getIndicators: (params = {}) => {
     const q = buildQuery({
       process_id: params.process_id,
@@ -114,9 +107,6 @@ const API = {
       method: "DELETE",
     }),
 
-  // -------------------------
-  // CAPTURA DIARIA ESTÁNDAR
-  // -------------------------
   saveDailyRecord: (payload) =>
     request("/daily-records", {
       method: "POST",
@@ -143,9 +133,6 @@ const API = {
     return request(`/daily-records/by-date?${q}`);
   },
 
-  // -------------------------
-  // MATRIZ / CARGA MASIVA ESTÁNDAR
-  // -------------------------
   getMonthMatrix: ({ indicator_id, year, month }) => {
     const q = buildQuery({
       indicator_id,
@@ -164,16 +151,12 @@ const API = {
       }),
     }),
 
-  // Alias por compatibilidad
   getPeriodMatrix: ({ indicator_id, year, month }) =>
     API.getMonthMatrix({ indicator_id, year, month }),
 
   savePeriodMatrix: ({ indicator_id, rows }) =>
     API.saveMonthMatrix({ indicator_id, rows }),
 
-  // -------------------------
-  // PERSONAS
-  // -------------------------
   getPersons: ({ active_only } = {}) => {
     const q = buildQuery({
       active_only: active_only ? "true" : undefined,
@@ -198,9 +181,6 @@ const API = {
       method: "DELETE",
     }),
 
-  // -------------------------
-  // METAS POR PERSONA
-  // -------------------------
   getPersonTargets: ({ indicator_id, person_id, active_only } = {}) => {
     const q = buildQuery({
       indicator_id,
@@ -221,9 +201,6 @@ const API = {
       method: "DELETE",
     }),
 
-  // -------------------------
-  // CAPTURA POR PERSONA
-  // -------------------------
   getPersonCaptureGrid: ({ indicator_id, record_date }) => {
     const q = buildQuery({
       indicator_id,
@@ -252,9 +229,6 @@ const API = {
     return request(`/person-records${q ? `?${q}` : ""}`);
   },
 
-  // -------------------------
-  // HISTÓRICO
-  // -------------------------
   getHistory: ({ year, month, day, level, process_id, indicator_id }) => {
     const q = buildQuery({
       year,
@@ -286,9 +260,6 @@ const API = {
     return request(`/history/summary${q ? `?${q}` : ""}`);
   },
 
-  // -------------------------
-  // DASHBOARD
-  // -------------------------
   getDashboardOverview: ({ year, month, day, level }) => {
     const q = buildQuery({
       year,
