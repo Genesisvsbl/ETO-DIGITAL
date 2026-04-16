@@ -34,6 +34,9 @@ const CHART_COLORS = {
   text: "#17324d",
   pending: "#dce7f8",
   white: "#ffffff",
+  ok: "#8fb1ea",
+  warning: "#f4c430",
+  critical: "#e24b4b",
 };
 
 const PIE_COLORS = ["#133a6b", "#2459c3", "#6f97de"];
@@ -96,34 +99,9 @@ function CustomDailyTooltip({ active, payload, label, valueAxisLabel }) {
       </div>
 
       <div style={{ color: CHART_COLORS.text, fontSize: 13 }}>
-        <strong>Cumplimiento:</strong> {formatPercent(Number(row.general || 0))}
+        <strong>Estado:</strong> {String(row.status || "ok").toUpperCase()}
       </div>
     </div>
-  );
-}
-
-function DailyPercentInsideBarLabel(props) {
-  const { x, y, width, height, payload } = props;
-  if (!payload) return null;
-
-  const general = Number(payload.general || 0);
-  const text = formatPercent(general);
-  const safeWidth = Number(width || 0);
-  const safeHeight = Number(height || 0);
-
-  if (safeWidth < 26 || safeHeight < 18) return null;
-
-  return (
-    <text
-      x={x + safeWidth / 2}
-      y={y + Math.max(safeHeight / 2 + 4, 14)}
-      textAnchor="middle"
-      fill={CHART_COLORS.navy}
-      fontSize={11}
-      fontWeight={800}
-    >
-      {text}
-    </text>
   );
 }
 
@@ -157,37 +135,173 @@ function getMeasuredValueFromHistoryRow(row) {
   }
 
   const values = [];
-  if (row.shift_a !== null && row.shift_a !== undefined) values.push(Number(row.shift_a));
-  if (row.shift_b !== null && row.shift_b !== undefined) values.push(Number(row.shift_b));
-  if (row.shift_c !== null && row.shift_c !== undefined) values.push(Number(row.shift_c));
+  if (row.shift_a !== null && row.shift_a !== undefined) {
+    values.push(Number(row.shift_a));
+  }
+  if (row.shift_b !== null && row.shift_b !== undefined) {
+    values.push(Number(row.shift_b));
+  }
+  if (row.shift_c !== null && row.shift_c !== undefined) {
+    values.push(Number(row.shift_c));
+  }
 
   if (!values.length) return 0;
+
   return values.reduce((acc, val) => acc + val, 0) / values.length;
 }
 
-function buildDailySeriesFromHistory(historyRows) {
-  const sorted = [...(historyRows || [])].sort(
+function getBarColorByStatus(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+
+  if (normalized === "critical") return CHART_COLORS.critical;
+  if (normalized === "warning") return CHART_COLORS.warning;
+  return CHART_COLORS.ok;
+}
+
+function getDaysInMonth(year, month) {
+  if (!year || !month) return 31;
+  return new Date(Number(year), Number(month), 0).getDate();
+}
+
+function getWeekRangeOptions(year, month) {
+  const totalDays = getDaysInMonth(year, month);
+
+  const baseWeeks = [
+    {
+      value: "1",
+      label: `Semana 1 (1-${Math.min(7, totalDays)})`,
+      start: 1,
+      end: Math.min(7, totalDays),
+    },
+    {
+      value: "2",
+      label: `Semana 2 (8-${Math.min(14, totalDays)})`,
+      start: 8,
+      end: Math.min(14, totalDays),
+    },
+    {
+      value: "3",
+      label: `Semana 3 (15-${Math.min(21, totalDays)})`,
+      start: 15,
+      end: Math.min(21, totalDays),
+    },
+    {
+      value: "4",
+      label: `Semana 4 (22-${Math.min(28, totalDays)})`,
+      start: 22,
+      end: Math.min(28, totalDays),
+    },
+    {
+      value: "5",
+      label: `Semana 5 (29-${totalDays})`,
+      start: 29,
+      end: totalDays,
+    },
+  ].filter((item) => item.start <= totalDays);
+
+  const combos = [
+    {
+      value: "1-2",
+      label: `Semanas 1-2 (1-${Math.min(14, totalDays)})`,
+      start: 1,
+      end: Math.min(14, totalDays),
+    },
+    {
+      value: "2-3",
+      label: `Semanas 2-3 (8-${Math.min(21, totalDays)})`,
+      start: 8,
+      end: Math.min(21, totalDays),
+    },
+    {
+      value: "3-4",
+      label: `Semanas 3-4 (15-${Math.min(28, totalDays)})`,
+      start: 15,
+      end: Math.min(28, totalDays),
+    },
+    {
+      value: "4-5",
+      label: `Semanas 4-5 (22-${totalDays})`,
+      start: 22,
+      end: totalDays,
+    },
+  ].filter((item) => item.start <= totalDays && item.start <= item.end);
+
+  return [...baseWeeks, ...combos];
+}
+
+function getWeekRangeFromValue(value, year, month) {
+  const options = getWeekRangeOptions(year, month);
+  return options.find((item) => item.value === value) || null;
+}
+
+function filterHistoryRowsByPeriod(historyRows, filter) {
+  const rows = Array.isArray(historyRows) ? historyRows : [];
+  const period = String(filter?.period || "month");
+
+  const sorted = [...rows].sort(
     (a, b) => new Date(a.record_date) - new Date(b.record_date)
   );
 
-  return sorted.map((item, index) => {
+  if (period === "day") {
+    const selectedDay = Number(filter?.day);
+    if (!selectedDay) return sorted;
+
+    return sorted.filter((row) => {
+      const day = Number(String(row.record_date || "").slice(8, 10));
+      return day === selectedDay;
+    });
+  }
+
+  if (period === "week") {
+    const range = getWeekRangeFromValue(
+      filter?.week_segment,
+      filter?.year,
+      filter?.month
+    );
+
+    if (!range) return sorted;
+
+    return sorted.filter((row) => {
+      const day = Number(String(row.record_date || "").slice(8, 10));
+      return day >= range.start && day <= range.end;
+    });
+  }
+
+  return sorted;
+}
+
+function buildDailySeriesFromHistory(historyRows, filter) {
+  const filteredRows = filterHistoryRowsByPeriod(historyRows, filter);
+
+  return filteredRows.map((item, index) => {
     const recordDate = String(item.record_date || "").slice(0, 10);
     const day = Number(recordDate.slice(8, 10)) || index + 1;
     const realValue = Number(getMeasuredValueFromHistoryRow(item) || 0);
+    const status = String(item.status || "ok").toLowerCase();
 
     return {
       date: recordDate,
       day,
-      shortLabel: formatShortDate(recordDate),
+      xLabel: String(day),
+      fullShortLabel: formatShortDate(recordDate),
       value: realValue,
-      general: Number(item.general || 0),
+      trendValue: realValue,
       unit: item.unit || "",
+      status,
+      fill: getBarColorByStatus(status),
       single_value: item.single_value,
       shift_a: item.shift_a,
       shift_b: item.shift_b,
       shift_c: item.shift_c,
     };
   });
+}
+
+function calculateDynamicAverage(series) {
+  if (!Array.isArray(series) || !series.length) return 0;
+
+  const total = series.reduce((acc, item) => acc + Number(item.value || 0), 0);
+  return total / series.length;
 }
 
 function renderTrendChart({
@@ -204,23 +318,34 @@ function renderTrendChart({
           data={processDailySeries}
           margin={
             expanded
-              ? { top: 34, right: 30, left: 10, bottom: 86 }
-              : { top: 24, right: 24, left: 8, bottom: 72 }
+              ? { top: 34, right: 24, left: 10, bottom: 70 }
+              : { top: 24, right: 18, left: 8, bottom: 56 }
           }
         >
           <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
 
           <XAxis
-            dataKey="shortLabel"
+            dataKey="xLabel"
             interval={0}
-            angle={expanded ? -20 : -35}
-            textAnchor="end"
-            height={expanded ? 78 : 70}
+            angle={0}
+            textAnchor="middle"
+            height={expanded ? 46 : 40}
             tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
+            label={
+              expanded
+                ? {
+                    value: "Día",
+                    position: "insideBottom",
+                    offset: -4,
+                    fill: CHART_COLORS.text,
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }
+                : undefined
+            }
           />
 
           <YAxis
-            yAxisId="left"
             tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
             tickFormatter={(value) =>
               Number.isInteger(value) ? `${value}` : Number(value).toFixed(2)
@@ -239,26 +364,6 @@ function renderTrendChart({
             }
           />
 
-          <YAxis
-            yAxisId="right"
-            orientation="right"
-            domain={[0, 100]}
-            tickFormatter={(value) => `${value}%`}
-            tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
-            label={
-              expanded
-                ? {
-                    value: "% Cumplimiento",
-                    angle: 90,
-                    position: "insideRight",
-                    fill: CHART_COLORS.text,
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }
-                : undefined
-            }
-          />
-
           <Tooltip
             content={
               <CustomDailyTooltip valueAxisLabel={processValueAxisLabel} />
@@ -266,22 +371,24 @@ function renderTrendChart({
           />
 
           <Bar
-            yAxisId="left"
             dataKey="value"
             name={processValueAxisLabel}
-            fill={CHART_COLORS.blueSoft}
             radius={[8, 8, 0, 0]}
             maxBarSize={expanded ? 46 : 34}
           >
+            {processDailySeries.map((entry, index) => (
+              <Cell
+                key={`cell-${index}`}
+                fill={entry.fill || CHART_COLORS.ok}
+              />
+            ))}
             <LabelList content={<DailyValueTopLabel />} />
-            <LabelList content={<DailyPercentInsideBarLabel />} />
           </Bar>
 
           <Line
-            yAxisId="right"
             type="monotone"
-            dataKey="general"
-            name="% Cumplimiento"
+            dataKey="trendValue"
+            name="Tendencia"
             stroke={CHART_COLORS.navy}
             strokeWidth={3}
             dot={{ r: expanded ? 4 : 3, fill: CHART_COLORS.navy }}
@@ -295,19 +402,22 @@ function renderTrendChart({
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart
-        data={dashboardData.trend.map((item) => ({
+        data={dashboardData.trend.map((item, index) => ({
           ...item,
+          xLabel: String(
+            Number(String(item.label || "").slice(8, 10)) || index + 1
+          ),
           shortLabel: formatShortDate(item.label),
         }))}
-        margin={{ top: 10, right: 20, left: 0, bottom: 70 }}
+        margin={{ top: 10, right: 20, left: 0, bottom: 50 }}
       >
         <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
         <XAxis
-          dataKey="shortLabel"
+          dataKey="xLabel"
           interval={0}
-          angle={-45}
-          textAnchor="end"
-          height={70}
+          angle={0}
+          textAnchor="middle"
+          height={40}
           tick={{ fontSize: 11 }}
         />
         <YAxis tickFormatter={(value) => `${value}%`} />
@@ -347,6 +457,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     day: "",
     level: "",
     period: "month",
+    week_segment: "",
   });
 
   const filteredIndicatorsForDashboard = useMemo(() => {
@@ -367,6 +478,11 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     !!selectedDashboardIndicator &&
     selectedDashboardIndicator.scope_type !== "person";
 
+  const weekRangeOptions = useMemo(() => {
+    if (!dashboardFilter.year || !dashboardFilter.month) return [];
+    return getWeekRangeOptions(dashboardFilter.year, dashboardFilter.month);
+  }, [dashboardFilter.year, dashboardFilter.month]);
+
   async function handleLoadDashboard(e) {
     if (e) e.preventDefault();
 
@@ -380,6 +496,20 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
         ...dashboardFilter,
         level: Number(accessLevel),
       };
+
+      if (filters.period === "week" && (!filters.year || !filters.month)) {
+        throw new Error("Para vista semanal debes seleccionar año y mes.");
+      }
+
+      if (filters.period === "week" && !filters.week_segment) {
+        throw new Error(
+          "Selecciona la semana o rango de semanas que deseas visualizar."
+        );
+      }
+
+      if (filters.period === "day" && !filters.day) {
+        throw new Error("Para vista por día debes indicar el día.");
+      }
 
       if (filters.indicator_id) {
         const selectedIndicator = indicators.find(
@@ -412,16 +542,22 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
         const requests = [API.getProcessDashboard(filters)];
 
         if (filters.indicator_id && isStandardIndicatorSelected) {
-          requests.push(
-            API.getHistory({
-              year: filters.year ? Number(filters.year) : undefined,
-              month: filters.month ? Number(filters.month) : undefined,
-              day: filters.day ? Number(filters.day) : undefined,
-              level: Number(accessLevel),
-              process_id: Number(filters.process_id),
-              indicator_id: Number(filters.indicator_id),
-            })
-          );
+          const historyParams = {
+            year: filters.year ? Number(filters.year) : undefined,
+            month:
+              filters.month && filters.period !== "year"
+                ? Number(filters.month)
+                : undefined,
+            day:
+              filters.period === "day" && filters.day
+                ? Number(filters.day)
+                : undefined,
+            level: Number(accessLevel),
+            process_id: Number(filters.process_id),
+            indicator_id: Number(filters.indicator_id),
+          };
+
+          requests.push(API.getHistory(historyParams));
         }
 
         const [processData, historyData] = await Promise.all(requests);
@@ -440,7 +576,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
         setIndicatorHistoryRows([]);
       }
     } catch (err) {
-      setMessage(err.message);
+      setMessage(err.message || "No se pudo cargar el dashboard.");
     } finally {
       setLoading(false);
     }
@@ -503,24 +639,85 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     if (!dashboardData || dashboardData?.is_person_dashboard) return [];
 
     if (isStandardIndicatorSelected && indicatorHistoryRows.length) {
-      return buildDailySeriesFromHistory(indicatorHistoryRows);
+      return buildDailySeriesFromHistory(indicatorHistoryRows, dashboardFilter);
     }
 
     return (dashboardData?.trend || [])
-      .map((item, index) => ({
-        date: item.label,
-        day: Number(String(item.label || "").slice(8, 10)) || index + 1,
-        shortLabel: formatShortDate(item.label),
-        value: Number(item.value || 0),
-        general: Number(item.value || 0),
-      }))
+      .map((item, index) => {
+        const numericValue = Number(item.value || 0);
+        return {
+          date: item.label,
+          day: Number(String(item.label || "").slice(8, 10)) || index + 1,
+          xLabel: String(
+            Number(String(item.label || "").slice(8, 10)) || index + 1
+          ),
+          shortLabel: formatShortDate(item.label),
+          value: numericValue,
+          trendValue: numericValue,
+          status: "ok",
+          fill: CHART_COLORS.ok,
+        };
+      })
       .sort((a, b) => Number(a.day) - Number(b.day));
-  }, [dashboardData, indicatorHistoryRows, isStandardIndicatorSelected]);
+  }, [
+    dashboardData,
+    indicatorHistoryRows,
+    isStandardIndicatorSelected,
+    dashboardFilter,
+  ]);
 
   const processValueAxisLabel = useMemo(() => {
     if (!selectedDashboardIndicator) return "Valor";
     return selectedDashboardIndicator.unit || "Valor";
   }, [selectedDashboardIndicator]);
+
+  const weekRangeLabel = useMemo(() => {
+    const match = weekRangeOptions.find(
+      (item) => item.value === dashboardFilter.week_segment
+    );
+    return match?.label || "Semana";
+  }, [weekRangeOptions, dashboardFilter.week_segment]);
+
+  const dynamicAverageGeneral = useMemo(() => {
+    if (!isStandardIndicatorSelected || !processDailySeries.length) {
+      return Number(dashboardData?.summary?.average_general || 0);
+    }
+    return calculateDynamicAverage(processDailySeries);
+  }, [isStandardIndicatorSelected, processDailySeries, dashboardData]);
+
+  const dynamicTotalRecords = useMemo(() => {
+    if (!isStandardIndicatorSelected || !processDailySeries.length) {
+      return Number(dashboardData?.summary?.total_records || 0);
+    }
+    return processDailySeries.length;
+  }, [isStandardIndicatorSelected, processDailySeries, dashboardData]);
+
+  const dynamicStatusSummary = useMemo(() => {
+    if (!isStandardIndicatorSelected || !processDailySeries.length) {
+      return {
+        ok: Number(dashboardData?.summary?.ok_count || 0),
+        warning: Number(dashboardData?.summary?.warning_count || 0),
+        critical: Number(dashboardData?.summary?.critical_count || 0),
+      };
+    }
+
+    return processDailySeries.reduce(
+      (acc, item) => {
+        const status = String(item.status || "").toLowerCase();
+
+        if (status === "critical") {
+          acc.critical += 1;
+        } else if (status === "warning") {
+          acc.warning += 1;
+        } else {
+          acc.ok += 1;
+        }
+
+        return acc;
+      },
+      { ok: 0, warning: 0, critical: 0 }
+    );
+  }, [isStandardIndicatorSelected, processDailySeries, dashboardData]);
 
   return (
     <section className="content-card dashboard-master-card">
@@ -591,6 +788,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                 setDashboardFilter({
                   ...dashboardFilter,
                   year: e.target.value,
+                  week_segment: "",
                 })
               }
               placeholder="2026"
@@ -606,6 +804,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                 setDashboardFilter({
                   ...dashboardFilter,
                   month: e.target.value,
+                  week_segment: "",
+                  day: "",
                 })
               }
               placeholder="1-12"
@@ -624,6 +824,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                 })
               }
               placeholder="1-31"
+              disabled={dashboardFilter.period !== "day"}
             />
           </div>
 
@@ -636,12 +837,16 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
             <label>Vista rápida</label>
             <select
               value={dashboardFilter.period}
-              onChange={(e) =>
+              onChange={(e) => {
+                const nextPeriod = e.target.value;
                 setDashboardFilter({
                   ...dashboardFilter,
-                  period: e.target.value,
-                })
-              }
+                  period: nextPeriod,
+                  day: nextPeriod === "day" ? dashboardFilter.day : "",
+                  week_segment:
+                    nextPeriod === "week" ? dashboardFilter.week_segment : "",
+                });
+              }}
             >
               <option value="day">Día</option>
               <option value="week">Semana</option>
@@ -649,6 +854,29 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               <option value="year">Año</option>
             </select>
           </div>
+
+          {dashboardFilter.period === "week" && (
+            <div className="field">
+              <label>Semana / rango</label>
+              <select
+                value={dashboardFilter.week_segment}
+                onChange={(e) =>
+                  setDashboardFilter({
+                    ...dashboardFilter,
+                    week_segment: e.target.value,
+                  })
+                }
+                disabled={!dashboardFilter.year || !dashboardFilter.month}
+              >
+                <option value="">Seleccionar</option>
+                {weekRangeOptions.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="field action-field">
             <label>&nbsp;</label>
@@ -882,8 +1110,12 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                         />
                         <Tooltip
                           formatter={(value, name) => {
-                            if (name === "Acumulado") return formatPlainNumber(value);
-                            if (name === "Pendiente") return formatPlainNumber(value);
+                            if (name === "Acumulado") {
+                              return formatPlainNumber(value);
+                            }
+                            if (name === "Pendiente") {
+                              return formatPlainNumber(value);
+                            }
                             return value;
                           }}
                           labelFormatter={(label, payload) =>
@@ -999,31 +1231,35 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               <section className="executive-kpi-grid clean-kpis">
                 <div className="executive-kpi blue-main">
                   <span>Promedio general</span>
-                  <strong>{formatPercent(dashboardData.summary.average_general)}</strong>
-                  <small>Resultado consolidado del proceso</small>
+                  <strong>{formatPercent(dynamicAverageGeneral)}</strong>
+                  <small>
+                    {isStandardIndicatorSelected
+                      ? "Promedio dinámico según el filtro aplicado"
+                      : "Resultado consolidado del proceso"}
+                  </small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>Registros</span>
-                  <strong>{dashboardData.summary.total_records}</strong>
+                  <strong>{dynamicTotalRecords}</strong>
                   <small>Total de capturas analizadas</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>OK</span>
-                  <strong>{dashboardData.summary.ok_count}</strong>
+                  <strong>{dynamicStatusSummary.ok}</strong>
                   <small>Dentro de rango</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>Warning</span>
-                  <strong>{dashboardData.summary.warning_count}</strong>
+                  <strong>{dynamicStatusSummary.warning}</strong>
                   <small>Seguimiento</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>Critical</span>
-                  <strong>{dashboardData.summary.critical_count}</strong>
+                  <strong>{dynamicStatusSummary.critical}</strong>
                   <small>Prioridad alta</small>
                 </div>
               </section>
@@ -1039,17 +1275,24 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       gap: 12,
                     }}
                   >
-                    <span>Tendencia general</span>
+                    <span>
+                      Tendencia general
+                      {dashboardFilter.period === "week" &&
+                      dashboardFilter.week_segment
+                        ? ` - ${weekRangeLabel}`
+                        : ""}
+                    </span>
 
-                    {isStandardIndicatorSelected && !!processDailySeries.length && (
-                      <button
-                        type="button"
-                        className="secondary"
-                        onClick={() => setIsTrendExpanded(true)}
-                      >
-                        Ampliar gráfica
-                      </button>
-                    )}
+                    {isStandardIndicatorSelected &&
+                      !!processDailySeries.length && (
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => setIsTrendExpanded(true)}
+                        >
+                          Ampliar gráfica
+                        </button>
+                      )}
                   </div>
 
                   <div className="chart-container executive-chart">
@@ -1077,13 +1320,16 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                         <strong>Barras:</strong> valor real por día
                       </span>
                       <span>
-                        <strong>Línea:</strong> porcentaje de cumplimiento
+                        <strong>Línea:</strong> tendencia del valor
                       </span>
                       <span>
-                        <strong>Número arriba:</strong> valor real diario
+                        <strong>Azul:</strong> OK
                       </span>
                       <span>
-                        <strong>% dentro de barra:</strong> cumplimiento diario
+                        <strong>Amarillo:</strong> Warning
+                      </span>
+                      <span>
+                        <strong>Rojo:</strong> Critical
                       </span>
                     </div>
                   )}
@@ -1242,7 +1488,9 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                           <LabelList
                             dataKey="cumulative"
                             position="top"
-                            formatter={(value) => `${Number(value).toFixed(1)}%`}
+                            formatter={(value) =>
+                              `${Number(value).toFixed(1)}%`
+                            }
                             style={{
                               fill: CHART_COLORS.text,
                               fontWeight: 800,
@@ -1285,7 +1533,9 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                         </div>
                         <div>
                           Captura:{" "}
-                          <strong>{formatCaptureModeLabel(item.capture_mode)}</strong>
+                          <strong>
+                            {formatCaptureModeLabel(item.capture_mode)}
+                          </strong>
                         </div>
                         <div>
                           Meta:{" "}
@@ -1328,7 +1578,9 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               </section>
 
               <section className="executive-section">
-                <div className="subsection-title">Micro tendencias por indicador</div>
+                <div className="subsection-title">
+                  Micro tendencias por indicador
+                </div>
                 <div className="indicator-trend-grid">
                   {dashboardData.indicator_trends.map((item) => (
                     <div
@@ -1362,7 +1614,9 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                             />
                             <XAxis dataKey="label" hide />
                             <YAxis hide />
-                            <Tooltip formatter={(value) => formatPercent(value)} />
+                            <Tooltip
+                              formatter={(value) => formatPercent(value)}
+                            />
                             <Line
                               type="monotone"
                               dataKey="value"
@@ -1382,118 +1636,130 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
         </>
       )}
 
-      {isTrendExpanded && isStandardIndicatorSelected && !!processDailySeries.length && (
-        <div
-          onClick={() => setIsTrendExpanded(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15, 31, 53, 0.55)",
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 24,
-          }}
-        >
+      {isTrendExpanded &&
+        isStandardIndicatorSelected &&
+        !!processDailySeries.length && (
           <div
-            onClick={(e) => e.stopPropagation()}
+            onClick={() => setIsTrendExpanded(false)}
             style={{
-              width: "min(1200px, 96vw)",
-              height: "min(760px, 92vh)",
-              background: "#ffffff",
-              borderRadius: 24,
-              boxShadow: "0 30px 80px rgba(10, 28, 48, 0.28)",
-              border: "1px solid #d7e3f1",
-              padding: 20,
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15, 31, 53, 0.55)",
+              zIndex: 9999,
               display: "flex",
-              flexDirection: "column",
-              gap: 14,
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 24,
             }}
           >
             <div
+              onClick={(e) => e.stopPropagation()}
               style={{
+                width: "min(1200px, 96vw)",
+                height: "min(760px, 92vh)",
+                background: "#ffffff",
+                borderRadius: 24,
+                boxShadow: "0 30px 80px rgba(10, 28, 48, 0.28)",
+                border: "1px solid #d7e3f1",
+                padding: 20,
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 16,
+                flexDirection: "column",
+                gap: 14,
               }}
             >
-              <div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 800,
-                    letterSpacing: "0.08em",
-                    color: "#6b7c93",
-                    textTransform: "uppercase",
-                    marginBottom: 4,
-                  }}
-                >
-                  Tendencia ampliada
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 16,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      letterSpacing: "0.08em",
+                      color: "#6b7c93",
+                      textTransform: "uppercase",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Tendencia ampliada
+                  </div>
+                  <h3
+                    style={{
+                      margin: 0,
+                      color: CHART_COLORS.text,
+                      fontSize: 28,
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    {selectedDashboardIndicator?.code} -{" "}
+                    {selectedDashboardIndicator?.name}
+                  </h3>
                 </div>
-                <h3
-                  style={{
-                    margin: 0,
-                    color: CHART_COLORS.text,
-                    fontSize: 28,
-                    lineHeight: 1.1,
-                  }}
+
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => setIsTrendExpanded(false)}
                 >
-                  {selectedDashboardIndicator?.code} - {selectedDashboardIndicator?.name}
-                </h3>
+                  Cerrar
+                </button>
               </div>
 
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => setIsTrendExpanded(false)}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 18,
+                  flexWrap: "wrap",
+                  fontSize: 13,
+                  color: CHART_COLORS.text,
+                }}
               >
-                Cerrar
-              </button>
-            </div>
+                <span>
+                  <strong>Proceso:</strong> {dashboardData?.process?.name}
+                </span>
+                <span>
+                  <strong>Unidad:</strong> {processValueAxisLabel}
+                </span>
+                <span>
+                  <strong>Barras:</strong> valor por día
+                </span>
+                <span>
+                  <strong>Línea:</strong> tendencia del valor
+                </span>
+                <span>
+                  <strong>Azul:</strong> OK
+                </span>
+                <span>
+                  <strong>Amarillo:</strong> Warning
+                </span>
+                <span>
+                  <strong>Rojo:</strong> Critical
+                </span>
+                {dashboardFilter.period === "week" &&
+                  dashboardFilter.week_segment && (
+                    <span>
+                      <strong>Rango:</strong> {weekRangeLabel}
+                    </span>
+                  )}
+              </div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: 18,
-                flexWrap: "wrap",
-                fontSize: 13,
-                color: CHART_COLORS.text,
-              }}
-            >
-              <span>
-                <strong>Proceso:</strong> {dashboardData?.process?.name}
-              </span>
-              <span>
-                <strong>Unidad:</strong> {processValueAxisLabel}
-              </span>
-              <span>
-                <strong>Barras:</strong> valor por día
-              </span>
-              <span>
-                <strong>Línea:</strong> % cumplimiento
-              </span>
-              <span>
-                <strong>Número arriba:</strong> valor real diario
-              </span>
-              <span>
-                <strong>% dentro de barra:</strong> cumplimiento diario
-              </span>
-            </div>
-
-            <div style={{ flex: 1, minHeight: 0 }}>
-              {renderTrendChart({
-                isStandardIndicatorSelected,
-                processDailySeries,
-                dashboardData,
-                processValueAxisLabel,
-                expanded: true,
-              })}
+              <div style={{ flex: 1, minHeight: 0 }}>
+                {renderTrendChart({
+                  isStandardIndicatorSelected,
+                  processDailySeries,
+                  dashboardData,
+                  processValueAxisLabel,
+                  expanded: true,
+                })}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
     </section>
   );
 }
