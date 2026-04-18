@@ -36,9 +36,10 @@ function formatRule(op, value, unit) {
   return `${op} ${value}${unit === "número" ? "" : ` ${unit}`}`;
 }
 
-function buildPersonOptionLabel(person) {
-  const parts = [person.full_name || person.name || "-"];
-  if (person.code) parts.push(`(${person.code})`);
+function buildEntityOptionLabel(entity) {
+  const parts = [entity.name || "-"];
+  if (entity.code) parts.push(`(${entity.code})`);
+  if (entity.entity_type) parts.push(`- ${entity.entity_type}`);
   return parts.join(" ");
 }
 
@@ -55,47 +56,53 @@ export default function IndicatorsView({
   resetIndicatorForm,
   toggleShift,
 
-  persons = [],
-  selectedIndicatorForPersons = null,
-  selectedIndicatorPersonTargets = [],
-  selectedPersonId = "",
-  selectedPersonTargetValue = "",
-  setSelectedPersonId = () => {},
-  setSelectedPersonTargetValue = () => {},
-  handleLoadIndicatorPersonTargets = () => {},
-  handleCreateOrUpdatePersonTarget = () => {},
-  handleDeletePersonTarget = () => {},
+  entities = [],
+  selectedIndicatorForEntities = null,
+  selectedIndicatorEntityTargets = [],
+  selectedEntityId = "",
+  selectedEntityTargetValue = "",
+  setSelectedEntityId = () => {},
+  setSelectedEntityTargetValue = () => {},
+  handleLoadIndicatorEntityTargets = () => {},
+  handleCreateOrUpdateEntityTarget = () => {},
+  handleDeleteEntityTarget = () => {},
 
-  personForm = {
+  entityForm = {
     code: "",
-    full_name: "",
+    name: "",
+    entity_type: "persona",
     is_active: true,
   },
-  setPersonForm = () => {},
-  handleCreatePerson = () => {},
+  setEntityForm = () => {},
+  handleCreateEntity = () => {},
 }) {
-  const [personFilter, setPersonFilter] = useState("");
+  const [entityFilter, setEntityFilter] = useState("");
 
-  const visiblePersons = useMemo(() => {
-    const query = String(personFilter || "").trim().toLowerCase();
+  const visibleEntities = useMemo(() => {
+    const query = String(entityFilter || "").trim().toLowerCase();
 
     const usedIds = new Set(
-      (selectedIndicatorPersonTargets || [])
-        .map((item) => Number(item.person_id))
+      (selectedIndicatorEntityTargets || [])
+        .map((item) => Number(item.entity_id))
         .filter((value) => !Number.isNaN(value))
     );
 
-    return (persons || []).filter((item) => {
-      const fullName = String(item.full_name || item.name || "").toLowerCase();
+    return (entities || []).filter((item) => {
+      const name = String(item.name || "").toLowerCase();
       const code = String(item.code || "").toLowerCase();
-      const matches = !query || fullName.includes(query) || code.includes(query);
-      const personId = Number(item.id);
+      const entityType = String(item.entity_type || "").toLowerCase();
+      const matches =
+        !query ||
+        name.includes(query) ||
+        code.includes(query) ||
+        entityType.includes(query);
 
-      return matches && !usedIds.has(personId);
+      const entityId = Number(item.id);
+      return matches && !usedIds.has(entityId);
     });
-  }, [personFilter, persons, selectedIndicatorPersonTargets]);
+  }, [entityFilter, entities, selectedIndicatorEntityTargets]);
 
-  const isPersonIndicatorForm = indicatorForm.scope_type === "person";
+  const isEntityIndicatorForm = indicatorForm.scope_type === "entity";
 
   return (
     <section className="content-card">
@@ -185,13 +192,13 @@ export default function IndicatorsView({
                     ...indicatorForm,
                     scope_type: e.target.value,
                     capture_mode:
-                      e.target.value === "person" ? "single" : "shifts",
-                    shifts: e.target.value === "person" ? [] : ["A", "B", "C"],
+                      e.target.value === "entity" ? "single" : "shifts",
+                    shifts: e.target.value === "entity" ? [] : ["A", "B", "C"],
                   })
                 }
               >
                 <option value="standard">Indicador estándar</option>
-                <option value="person">Indicador por persona</option>
+                <option value="entity">Indicador por entidad</option>
               </select>
             </div>
 
@@ -217,7 +224,7 @@ export default function IndicatorsView({
                 <label>Modo de captura</label>
                 <select
                   value={
-                    isPersonIndicatorForm ? "single" : indicatorForm.capture_mode
+                    isEntityIndicatorForm ? "single" : indicatorForm.capture_mode
                   }
                   onChange={(e) =>
                     setIndicatorForm({
@@ -226,7 +233,7 @@ export default function IndicatorsView({
                       shifts: e.target.value === "single" ? [] : ["A", "B", "C"],
                     })
                   }
-                  disabled={isPersonIndicatorForm}
+                  disabled={isEntityIndicatorForm}
                 >
                   <option value="shifts">Por turnos</option>
                   <option value="single">Valor único</option>
@@ -373,14 +380,14 @@ export default function IndicatorsView({
               </div>
             </div>
 
-            {indicatorForm.scope_type === "person" && (
+            {indicatorForm.scope_type === "entity" && (
               <div className="alert" style={{ marginBottom: 14 }}>
-                Este indicador será capturado solo por persona. No usará turnos
-                ni valor único estándar.
+                Este indicador será capturado por entidad. Te servirá para
+                evaluar personas, máquinas, líneas u otro recurso que definas.
               </div>
             )}
 
-            {indicatorForm.scope_type !== "person" &&
+            {indicatorForm.scope_type !== "entity" &&
               indicatorForm.capture_mode === "shifts" && (
                 <div className="field">
                   <label>Turnos habilitados</label>
@@ -472,7 +479,7 @@ export default function IndicatorsView({
                       )}
                     </td>
                     <td>
-                      {item.scope_type === "person" ? "Por persona" : "Estándar"}
+                      {item.scope_type === "entity" ? "Por entidad" : "Estándar"}
                     </td>
                     <td>
                       {item.capture_mode === "single"
@@ -489,13 +496,13 @@ export default function IndicatorsView({
                           Editar
                         </button>
 
-                        {item.scope_type === "person" && (
+                        {item.scope_type === "entity" && (
                           <button
                             type="button"
                             className="table-btn"
-                            onClick={() => handleLoadIndicatorPersonTargets(item)}
+                            onClick={() => handleLoadIndicatorEntityTargets(item)}
                           >
-                            Personas
+                            Entidades
                           </button>
                         )}
 
@@ -524,31 +531,31 @@ export default function IndicatorsView({
         </div>
       </div>
 
-      {selectedIndicatorForPersons && (
+      {selectedIndicatorForEntities && (
         <section className="panel-block" style={{ marginTop: 18 }}>
           <div className="subsection-title">
-            Personas asociadas - {selectedIndicatorForPersons.code} -{" "}
-            {selectedIndicatorForPersons.name}
+            Entidades asociadas - {selectedIndicatorForEntities.code} -{" "}
+            {selectedIndicatorForEntities.name}
           </div>
 
           <div className="rule-preview compact" style={{ marginBottom: 14 }}>
             <div className="rule-item">
               <span>Proceso</span>
-              <strong>{selectedIndicatorForPersons.process_name}</strong>
+              <strong>{selectedIndicatorForEntities.process_name}</strong>
             </div>
             <div className="rule-item">
               <span>Unidad</span>
-              <strong>{selectedIndicatorForPersons.unit}</strong>
+              <strong>{selectedIndicatorForEntities.unit}</strong>
             </div>
             <div className="rule-item">
               <span>Frecuencia</span>
               <strong>
-                {formatFrequencyLabel(selectedIndicatorForPersons.frequency)}
+                {formatFrequencyLabel(selectedIndicatorForEntities.frequency)}
               </strong>
             </div>
             <div className="rule-item">
               <span>Alcance</span>
-              <strong>Por persona</strong>
+              <strong>Por entidad</strong>
             </div>
           </div>
 
@@ -561,16 +568,16 @@ export default function IndicatorsView({
             }}
           >
             <div className="panel-block" style={{ margin: 0 }}>
-              <div className="subsection-title">Crear persona nueva</div>
+              <div className="subsection-title">Crear entidad nueva</div>
 
               <div className="form">
                 <div className="field">
                   <label>Código</label>
                   <input
-                    value={personForm.code}
+                    value={entityForm.code}
                     onChange={(e) =>
-                      setPersonForm({
-                        ...personForm,
+                      setEntityForm({
+                        ...entityForm,
                         code: e.target.value,
                       })
                     }
@@ -579,26 +586,40 @@ export default function IndicatorsView({
                 </div>
 
                 <div className="field">
-                  <label>Nombre completo</label>
+                  <label>Nombre</label>
                   <input
-                    value={personForm.full_name}
+                    value={entityForm.name}
                     onChange={(e) =>
-                      setPersonForm({
-                        ...personForm,
-                        full_name: e.target.value,
+                      setEntityForm({
+                        ...entityForm,
+                        name: e.target.value,
                       })
                     }
-                    placeholder="Ej. María Fernanda López"
+                    placeholder="Ej. Máquina Selladora 01"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Tipo de entidad</label>
+                  <input
+                    value={entityForm.entity_type}
+                    onChange={(e) =>
+                      setEntityForm({
+                        ...entityForm,
+                        entity_type: e.target.value,
+                      })
+                    }
+                    placeholder="Ej. persona, máquina, línea"
                   />
                 </div>
 
                 <div className="field">
                   <label>Estado</label>
                   <select
-                    value={personForm.is_active ? "true" : "false"}
+                    value={entityForm.is_active ? "true" : "false"}
                     onChange={(e) =>
-                      setPersonForm({
-                        ...personForm,
+                      setEntityForm({
+                        ...entityForm,
                         is_active: e.target.value === "true",
                       })
                     }
@@ -612,9 +633,9 @@ export default function IndicatorsView({
                   <button
                     type="button"
                     className="secondary"
-                    onClick={handleCreatePerson}
+                    onClick={handleCreateEntity}
                   >
-                    Guardar persona
+                    Guardar entidad
                   </button>
                 </div>
               </div>
@@ -622,7 +643,7 @@ export default function IndicatorsView({
 
             <div className="panel-block" style={{ margin: 0 }}>
               <div className="subsection-title">
-                Asociar persona al indicador
+                Asociar entidad al indicador
               </div>
 
               <div
@@ -635,24 +656,24 @@ export default function IndicatorsView({
                 }}
               >
                 <div className="field">
-                  <label>Buscar persona</label>
+                  <label>Buscar entidad</label>
                   <input
-                    value={personFilter}
-                    onChange={(e) => setPersonFilter(e.target.value)}
-                    placeholder="Buscar por nombre o código"
+                    value={entityFilter}
+                    onChange={(e) => setEntityFilter(e.target.value)}
+                    placeholder="Buscar por nombre, código o tipo"
                   />
                 </div>
 
                 <div className="field">
-                  <label>Persona</label>
+                  <label>Entidad</label>
                   <select
-                    value={selectedPersonId}
-                    onChange={(e) => setSelectedPersonId(e.target.value)}
+                    value={selectedEntityId}
+                    onChange={(e) => setSelectedEntityId(e.target.value)}
                   >
                     <option value="">Seleccione</option>
-                    {visiblePersons.map((person) => (
-                      <option key={person.id} value={person.id}>
-                        {buildPersonOptionLabel(person)}
+                    {visibleEntities.map((entity) => (
+                      <option key={entity.id} value={entity.id}>
+                        {buildEntityOptionLabel(entity)}
                       </option>
                     ))}
                   </select>
@@ -663,12 +684,12 @@ export default function IndicatorsView({
                   <input
                     type="number"
                     step="0.01"
-                    value={selectedPersonTargetValue}
-                    onChange={(e) => setSelectedPersonTargetValue(e.target.value)}
+                    value={selectedEntityTargetValue}
+                    onChange={(e) => setSelectedEntityTargetValue(e.target.value)}
                     placeholder={
-                      selectedIndicatorForPersons?.target_value !== undefined &&
-                      selectedIndicatorForPersons?.target_value !== null
-                        ? `Base: ${selectedIndicatorForPersons.target_value}`
+                      selectedIndicatorForEntities?.target_value !== undefined &&
+                      selectedIndicatorForEntities?.target_value !== null
+                        ? `Base: ${selectedIndicatorForEntities.target_value}`
                         : "Opcional"
                     }
                   />
@@ -679,15 +700,15 @@ export default function IndicatorsView({
                 <button
                   type="button"
                   className="primary"
-                  onClick={handleCreateOrUpdatePersonTarget}
+                  onClick={handleCreateOrUpdateEntityTarget}
                 >
-                  Agregar persona
+                  Agregar entidad
                 </button>
               </div>
 
-              {!visiblePersons.length && (
+              {!visibleEntities.length && (
                 <div className="alert" style={{ marginTop: 14 }}>
-                  No hay personas disponibles para asociar con el filtro actual
+                  No hay entidades disponibles para asociar con el filtro actual
                   o todas ya fueron asociadas.
                 </div>
               )}
@@ -699,17 +720,19 @@ export default function IndicatorsView({
               <thead>
                 <tr>
                   <th>Código</th>
-                  <th>Persona</th>
+                  <th>Entidad</th>
+                  <th>Tipo</th>
                   <th>Meta individual</th>
                   <th>Estado</th>
                   <th className="actions-col">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {selectedIndicatorPersonTargets.map((item, index) => (
-                  <tr key={item.id || `${item.person_id}-${index}`}>
-                    <td>{item.person_code}</td>
-                    <td>{item.person_name}</td>
+                {selectedIndicatorEntityTargets.map((item, index) => (
+                  <tr key={item.id || `${item.entity_id}-${index}`}>
+                    <td>{item.entity_code}</td>
+                    <td>{item.entity_name}</td>
+                    <td>{item.entity_type}</td>
                     <td>{item.target_value ?? 0}</td>
                     <td>{item.is_active ? "Activa" : "Inactiva"}</td>
                     <td>
@@ -717,7 +740,7 @@ export default function IndicatorsView({
                         <button
                           type="button"
                           className="table-btn delete"
-                          onClick={() => handleDeletePersonTarget(item)}
+                          onClick={() => handleDeleteEntityTarget(item)}
                         >
                           Quitar
                         </button>
@@ -726,10 +749,10 @@ export default function IndicatorsView({
                   </tr>
                 ))}
 
-                {!selectedIndicatorPersonTargets.length && (
+                {!selectedIndicatorEntityTargets.length && (
                   <tr>
-                    <td colSpan="5" className="empty">
-                      Este indicador aún no tiene personas asociadas
+                    <td colSpan="6" className="empty">
+                      Este indicador aún no tiene entidades asociadas
                     </td>
                   </tr>
                 )}

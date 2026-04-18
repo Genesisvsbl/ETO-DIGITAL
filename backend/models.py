@@ -44,17 +44,16 @@ class Indicator(Base):
     critical_operator = Column(String, nullable=False, default="<")
     critical_value = Column(Float, nullable=False, default=0)
 
-    frequency = Column(String, nullable=False, default="day")        # day | week | month
-    capture_mode = Column(String, nullable=False, default="shifts")  # single | shifts
-    shifts = Column(String, nullable=False, default="A,B,C")         # A,B,C | A,B | A | ""
+    frequency = Column(String, nullable=False, default="day")
+    capture_mode = Column(String, nullable=False, default="shifts")
+    shifts = Column(String, nullable=False, default="A,B,C")
 
-    # NUEVO
-    scope_type = Column(String, nullable=False, default="standard")  # standard | person
+    scope_type = Column(String, nullable=False, default="standard")  # standard | entity
 
     process = relationship("Process", back_populates="indicators")
     daily_records = relationship("DailyRecord", back_populates="indicator", cascade="all, delete")
-    person_targets = relationship("PersonIndicatorTarget", back_populates="indicator", cascade="all, delete")
-    person_records = relationship("PersonRecord", back_populates="indicator", cascade="all, delete")
+    entity_targets = relationship("EntityIndicatorTarget", back_populates="indicator", cascade="all, delete")
+    entity_records = relationship("EntityRecord", back_populates="indicator", cascade="all, delete")
 
 
 class DailyRecord(Base):
@@ -80,51 +79,52 @@ class DailyRecord(Base):
     indicator = relationship("Indicator", back_populates="daily_records")
 
 
-class Person(Base):
-    __tablename__ = "persons"
+class Entity(Base):
+    __tablename__ = "entities"
 
     id = Column(Integer, primary_key=True, index=True)
     code = Column(String, nullable=False, unique=True, index=True)
-    full_name = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False, index=True)
+    entity_type = Column(String, nullable=False, default="persona")
     document = Column(String, nullable=True, unique=True)
     position = Column(String, nullable=True)
     area = Column(String, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
 
-    targets = relationship("PersonIndicatorTarget", back_populates="person", cascade="all, delete")
-    records = relationship("PersonRecord", back_populates="person", cascade="all, delete")
+    targets = relationship("EntityIndicatorTarget", back_populates="entity", cascade="all, delete")
+    records = relationship("EntityRecord", back_populates="entity", cascade="all, delete")
 
 
-class PersonIndicatorTarget(Base):
-    __tablename__ = "person_indicator_targets"
+class EntityIndicatorTarget(Base):
+    __tablename__ = "entity_indicator_targets"
     __table_args__ = (
-        UniqueConstraint("indicator_id", "person_id", name="uq_person_indicator_target"),
+        UniqueConstraint("indicator_id", "entity_id", name="uq_entity_indicator_target"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
     indicator_id = Column(Integer, ForeignKey("indicators.id"), nullable=False)
-    person_id = Column(Integer, ForeignKey("persons.id"), nullable=False)
+    entity_id = Column(Integer, ForeignKey("entities.id"), nullable=False)
 
     target_value = Column(Float, nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True)
 
-    indicator = relationship("Indicator", back_populates="person_targets")
-    person = relationship("Person", back_populates="targets")
+    indicator = relationship("Indicator", back_populates="entity_targets")
+    entity = relationship("Entity", back_populates="targets")
 
 
-class PersonRecord(Base):
-    __tablename__ = "person_records"
+class EntityRecord(Base):
+    __tablename__ = "entity_records"
     __table_args__ = (
-        UniqueConstraint("indicator_id", "person_id", "record_date", name="uq_person_indicator_date"),
+        UniqueConstraint("indicator_id", "entity_id", "record_date", name="uq_entity_indicator_date"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
     indicator_id = Column(Integer, ForeignKey("indicators.id"), nullable=False)
-    person_id = Column(Integer, ForeignKey("persons.id"), nullable=False)
+    entity_id = Column(Integer, ForeignKey("entities.id"), nullable=False)
     record_date = Column(Date, nullable=False, index=True)
 
     value = Column(Float, nullable=False, default=0)
     observation = Column(Text, nullable=True)
 
-    indicator = relationship("Indicator", back_populates="person_records")
-    person = relationship("Person", back_populates="records")
+    indicator = relationship("Indicator", back_populates="entity_records")
+    entity = relationship("Entity", back_populates="records")

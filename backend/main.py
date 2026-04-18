@@ -15,9 +15,9 @@ from models import (
     Process,
     Indicator,
     DailyRecord,
-    Person,
-    PersonIndicatorTarget,
-    PersonRecord,
+    Entity,
+    EntityIndicatorTarget,
+    EntityRecord,
 )
 from schemas import (
     ProcessCreate,
@@ -27,16 +27,16 @@ from schemas import (
     DailyRecordCreate,
     DailyRecordOut,
     PeriodRecordSave,
-    PersonCreate,
-    PersonOut,
-    PersonIndicatorTargetCreate,
-    PersonIndicatorTargetOut,
-    PersonRecordBulkSave,
-    PersonRecordOut,
-    PersonCaptureGridOut,
-    PersonCaptureGridRow,
-    PersonDashboardOut,
-    PersonDashboardItem,
+    EntityCreate,
+    EntityOut,
+    EntityIndicatorTargetCreate,
+    EntityIndicatorTargetOut,
+    EntityRecordBulkSave,
+    EntityRecordOut,
+    EntityCaptureGridOut,
+    EntityCaptureGridRow,
+    EntityDashboardOut,
+    EntityDashboardItem,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -55,7 +55,7 @@ VALID_OPERATORS = [">", ">=", "<", "<=", "="]
 VALID_UNITS = ["%", "días", "horas", "unidades", "casos", "número"]
 VALID_FREQUENCIES = ["day", "week", "month"]
 VALID_CAPTURE_MODES = ["single", "shifts"]
-VALID_SCOPE_TYPES = ["standard", "person"]
+VALID_SCOPE_TYPES = ["standard", "entity"]
 
 
 class MonthlyRecordRow(BaseModel):
@@ -86,6 +86,10 @@ def run_safe_migrations():
                     row[1]
                     for row in connection.execute(text("PRAGMA table_info(daily_records)")).fetchall()
                 ]
+                entity_columns = [
+                    row[1]
+                    for row in connection.execute(text("PRAGMA table_info(entities)")).fetchall()
+                ] if table_exists_sqlite(connection, "entities") else []
 
                 if "frequency" not in indicator_columns:
                     connection.execute(
@@ -113,8 +117,57 @@ def run_safe_migrations():
                 if "shift_c" not in daily_record_columns:
                     connection.execute(text("ALTER TABLE daily_records ADD COLUMN shift_c FLOAT"))
 
+                if table_exists_sqlite(connection, "persons") and not table_exists_sqlite(connection, "entities"):
+                    connection.execute(
+                        text(
+                            """
+                            ALTER TABLE persons RENAME TO entities
+                            """
+                        )
+                    )
+
+                if table_exists_sqlite(connection, "person_indicator_targets") and not table_exists_sqlite(connection, "entity_indicator_targets"):
+                    connection.execute(
+                        text(
+                            """
+                            ALTER TABLE person_indicator_targets RENAME TO entity_indicator_targets
+                            """
+                        )
+                    )
+
+                if table_exists_sqlite(connection, "person_records") and not table_exists_sqlite(connection, "entity_records"):
+                    connection.execute(
+                        text(
+                            """
+                            ALTER TABLE person_records RENAME TO entity_records
+                            """
+                        )
+                    )
+
+                if table_exists_sqlite(connection, "entities"):
+                    entity_columns = [
+                        row[1]
+                        for row in connection.execute(text("PRAGMA table_info(entities)")).fetchall()
+                    ]
+                    if "name" not in entity_columns and "full_name" in entity_columns:
+                        try:
+                            connection.execute(text("ALTER TABLE entities ADD COLUMN name VARCHAR"))
+                            connection.execute(text("UPDATE entities SET name = full_name WHERE name IS NULL"))
+                        except Exception:
+                            pass
+                    if "entity_type" not in entity_columns:
+                        connection.execute(
+                            text("ALTER TABLE entities ADD COLUMN entity_type VARCHAR NOT NULL DEFAULT 'persona'")
+                        )
+
+                try:
+                    connection.execute(
+                        text("UPDATE indicators SET scope_type = 'entity' WHERE scope_type IN ('person', 'persona')")
+                    )
+                except Exception:
+                    pass
+
             else:
-                # PostgreSQL / Neon
                 connection.execute(
                     text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS scope_type VARCHAR NOT NULL DEFAULT 'standard'")
                 )
@@ -153,6 +206,47 @@ def run_safe_migrations():
                 except Exception:
                     pass
 
+                try:
+                    connection.execute(text("ALTER TABLE persons RENAME TO entities"))
+                except Exception:
+                    pass
+
+                try:
+                    connection.execute(text("ALTER TABLE person_indicator_targets RENAME TO entity_indicator_targets"))
+                except Exception:
+                    pass
+
+                try:
+                    connection.execute(text("ALTER TABLE person_records RENAME TO entity_records"))
+                except Exception:
+                    pass
+
+                try:
+                    connection.execute(text("ALTER TABLE entities RENAME COLUMN full_name TO name"))
+                except Exception:
+                    pass
+
+                try:
+                    connection.execute(
+                        text("ALTER TABLE entities ADD COLUMN IF NOT EXISTS entity_type VARCHAR NOT NULL DEFAULT 'persona'")
+                    )
+                except Exception:
+                    pass
+
+                try:
+                    connection.execute(
+                        text("ALTER TABLE indicators ALTER COLUMN scope_type SET DEFAULT 'standard'")
+                    )
+                except Exception:
+                    pass
+
+                try:
+                    connection.execute(
+                        text("UPDATE indicators SET scope_type = 'entity' WHERE scope_type IN ('person', 'persona')")
+                    )
+                except Exception:
+                    pass
+
             connection.execute(
                 text(
                     """
@@ -181,6 +275,17 @@ def run_safe_migrations():
 
         except Exception:
             pass
+
+
+def table_exists_sqlite(connection, table_name: str) -> bool:
+    try:
+        result = connection.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name"),
+            {"table_name": table_name},
+        ).fetchone()
+        return result is not None
+    except Exception:
+        return False
 
 
 run_safe_migrations()
@@ -226,9 +331,16 @@ def normalize_capture_mode(value: Optional[str]) -> str:
 def normalize_scope_type(value: Optional[str]) -> str:
     mapping = {
         "standard": "standard",
-        "person": "person",
-        "persona": "person",
-        "persona por persona": "person",
+        "entity": "entity",
+        "entidad": "entity",
+        "recurso": "entity",
+        "resource": "entity",
+        "person": "entity",
+        "persona": "entity",
+        "persona por persona": "entity",
+        "machine": "entity",
+        "maquina": "entity",
+        "máquina": "entity",
     }
     clean = (value or "").strip().lower()
     return mapping.get(clean, clean)
@@ -240,10 +352,10 @@ def generate_indicator_code(db: Session):
     return f"IND-{next_id:04d}"
 
 
-def generate_person_code(db: Session):
-    last = db.query(Person).order_by(Person.id.desc()).first()
+def generate_entity_code(db: Session):
+    last = db.query(Entity).order_by(Entity.id.desc()).first()
     next_id = 1 if not last else last.id + 1
-    return f"PER-{next_id:04d}"
+    return f"ENT-{next_id:04d}"
 
 
 def get_enabled_shifts(indicator: Indicator):
@@ -326,7 +438,7 @@ def calculate_status(indicator: Indicator, measured_value: float):
     return "ok"
 
 
-def calculate_person_status(indicator: Indicator, compliance: float):
+def calculate_entity_status(indicator: Indicator, compliance: float):
     return calculate_status(indicator, compliance)
 
 
@@ -356,7 +468,7 @@ def validate_indicator_payload(payload: IndicatorCreate):
     if payload.scope_type not in VALID_SCOPE_TYPES:
         raise HTTPException(status_code=400, detail="Tipo de alcance no válido")
 
-    if payload.scope_type == "person":
+    if payload.scope_type == "entity":
         payload.capture_mode = "single"
         payload.shifts = []
         return []
@@ -380,7 +492,7 @@ def validate_indicator_payload(payload: IndicatorCreate):
 
 def validate_record_payload(indicator: Indicator, payload: DailyRecordCreate):
     if indicator.scope_type != "standard":
-        raise HTTPException(status_code=400, detail="Este indicador usa captura por persona")
+        raise HTTPException(status_code=400, detail="Este indicador usa captura por entidad")
 
     if indicator.capture_mode == "single":
         if payload.single_value is None:
@@ -586,29 +698,44 @@ def build_indicator_out(indicator: Indicator):
     )
 
 
-def build_person_target_out(item: PersonIndicatorTarget):
-    return PersonIndicatorTargetOut(
+def build_entity_out(item: Entity):
+    return EntityOut(
+        id=item.id,
+        code=item.code,
+        name=item.name,
+        entity_type=item.entity_type,
+        document=item.document,
+        position=item.position,
+        area=item.area,
+        is_active=item.is_active,
+    )
+
+
+def build_entity_target_out(item: EntityIndicatorTarget):
+    return EntityIndicatorTargetOut(
         id=item.id,
         indicator_id=item.indicator_id,
-        person_id=item.person_id,
+        entity_id=item.entity_id,
         target_value=item.target_value,
         is_active=item.is_active,
         indicator_code=item.indicator.code,
         indicator_name=item.indicator.name,
-        person_code=item.person.code,
-        person_name=item.person.full_name,
+        entity_code=item.entity.code,
+        entity_name=item.entity.name,
+        entity_type=item.entity.entity_type,
     )
 
 
-def build_person_record_out(item: PersonRecord):
-    return PersonRecordOut(
+def build_entity_record_out(item: EntityRecord):
+    return EntityRecordOut(
         id=item.id,
         indicator_id=item.indicator_id,
         indicator_code=item.indicator.code,
         indicator_name=item.indicator.name,
-        person_id=item.person_id,
-        person_code=item.person.code,
-        person_name=item.person.full_name,
+        entity_id=item.entity_id,
+        entity_code=item.entity.code,
+        entity_name=item.entity.name,
+        entity_type=item.entity.entity_type,
         record_date=item.record_date,
         value=item.value,
         observation=item.observation,
@@ -981,7 +1108,7 @@ def get_period_matrix(
         raise HTTPException(status_code=404, detail="Indicador no encontrado")
 
     if indicator.scope_type != "standard":
-        raise HTTPException(status_code=400, detail="Este indicador usa captura por persona")
+        raise HTTPException(status_code=400, detail="Este indicador usa captura por entidad")
 
     month_start = date(year, month, 1)
     month_end = date(year, month, calendar.monthrange(year, month)[1])
@@ -1043,7 +1170,7 @@ def save_period_matrix(payload: PeriodRecordSave, db: Session = Depends(get_db))
         raise HTTPException(status_code=404, detail="Indicador no encontrado")
 
     if indicator.scope_type != "standard":
-        raise HTTPException(status_code=400, detail="Este indicador usa captura por persona")
+        raise HTTPException(status_code=400, detail="Este indicador usa captura por entidad")
 
     saved = 0
     deleted = 0
@@ -1159,6 +1286,7 @@ def save_month_matrix(payload: MonthlyRecordSave, db: Session = Depends(get_db))
         ),
         db=db,
     )
+
 
 @app.get("/history", response_model=list[DailyRecordOut])
 def get_history(
@@ -1461,113 +1589,115 @@ def get_process_dashboard(
 
 
 # -------------------------
-# PERSONAS
+# ENTIDADES
 # -------------------------
-@app.post("/persons", response_model=PersonOut)
-def create_person(payload: PersonCreate, db: Session = Depends(get_db)):
-    code = payload.code.strip() if payload.code.strip() else generate_person_code(db)
+@app.post("/entities", response_model=EntityOut)
+def create_entity(payload: EntityCreate, db: Session = Depends(get_db)):
+    code = payload.code.strip() if payload.code.strip() else generate_entity_code(db)
 
-    exists_code = db.query(Person).filter(Person.code == code).first()
+    exists_code = db.query(Entity).filter(Entity.code == code).first()
     if exists_code:
-        raise HTTPException(status_code=400, detail="Ya existe una persona con ese código")
+        raise HTTPException(status_code=400, detail="Ya existe una entidad con ese código")
 
     if payload.document:
-        exists_doc = db.query(Person).filter(Person.document == payload.document.strip()).first()
+        exists_doc = db.query(Entity).filter(Entity.document == payload.document.strip()).first()
         if exists_doc:
-            raise HTTPException(status_code=400, detail="Ya existe una persona con ese documento")
+            raise HTTPException(status_code=400, detail="Ya existe una entidad con ese documento")
 
-    person = Person(
+    entity = Entity(
         code=code,
-        full_name=payload.full_name.strip(),
+        name=payload.name.strip(),
+        entity_type=(payload.entity_type or "persona").strip(),
         document=payload.document.strip() if payload.document else None,
         position=payload.position.strip() if payload.position else None,
         area=payload.area.strip() if payload.area else None,
         is_active=payload.is_active,
     )
-    db.add(person)
+    db.add(entity)
     db.commit()
-    db.refresh(person)
-    return person
+    db.refresh(entity)
+    return build_entity_out(entity)
 
 
-@app.get("/persons", response_model=list[PersonOut])
-def list_persons(active_only: bool = False, db: Session = Depends(get_db)):
-    query = db.query(Person)
+@app.get("/entities", response_model=list[EntityOut])
+def list_entities(active_only: bool = False, db: Session = Depends(get_db)):
+    query = db.query(Entity)
     if active_only:
-        query = query.filter(Person.is_active == True)
-    return query.order_by(Person.full_name.asc()).all()
+        query = query.filter(Entity.is_active == True)
+    return [build_entity_out(item) for item in query.order_by(Entity.name.asc()).all()]
 
 
-@app.put("/persons/{person_id}", response_model=PersonOut)
-def update_person(person_id: int, payload: PersonCreate, db: Session = Depends(get_db)):
-    person = db.query(Person).filter(Person.id == person_id).first()
-    if not person:
-        raise HTTPException(status_code=404, detail="Persona no encontrada")
+@app.put("/entities/{entity_id}", response_model=EntityOut)
+def update_entity(entity_id: int, payload: EntityCreate, db: Session = Depends(get_db)):
+    entity = db.query(Entity).filter(Entity.id == entity_id).first()
+    if not entity:
+        raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
-    code = payload.code.strip() if payload.code.strip() else person.code
+    code = payload.code.strip() if payload.code.strip() else entity.code
 
-    exists_code = db.query(Person).filter(Person.code == code, Person.id != person_id).first()
+    exists_code = db.query(Entity).filter(Entity.code == code, Entity.id != entity_id).first()
     if exists_code:
-        raise HTTPException(status_code=400, detail="Ya existe otra persona con ese código")
+        raise HTTPException(status_code=400, detail="Ya existe otra entidad con ese código")
 
     if payload.document:
-        exists_doc = db.query(Person).filter(
-            Person.document == payload.document.strip(),
-            Person.id != person_id
+        exists_doc = db.query(Entity).filter(
+            Entity.document == payload.document.strip(),
+            Entity.id != entity_id
         ).first()
         if exists_doc:
-            raise HTTPException(status_code=400, detail="Ya existe otra persona con ese documento")
+            raise HTTPException(status_code=400, detail="Ya existe otra entidad con ese documento")
 
-    person.code = code
-    person.full_name = payload.full_name.strip()
-    person.document = payload.document.strip() if payload.document else None
-    person.position = payload.position.strip() if payload.position else None
-    person.area = payload.area.strip() if payload.area else None
-    person.is_active = payload.is_active
+    entity.code = code
+    entity.name = payload.name.strip()
+    entity.entity_type = (payload.entity_type or entity.entity_type or "persona").strip()
+    entity.document = payload.document.strip() if payload.document else None
+    entity.position = payload.position.strip() if payload.position else None
+    entity.area = payload.area.strip() if payload.area else None
+    entity.is_active = payload.is_active
 
     db.commit()
-    db.refresh(person)
-    return person
+    db.refresh(entity)
+    return build_entity_out(entity)
 
 
-@app.delete("/persons/{person_id}")
-def delete_person(person_id: int, db: Session = Depends(get_db)):
-    person = db.query(Person).filter(Person.id == person_id).first()
-    if not person:
-        raise HTTPException(status_code=404, detail="Persona no encontrada")
+@app.delete("/entities/{entity_id}")
+def delete_entity(entity_id: int, db: Session = Depends(get_db)):
+    entity = db.query(Entity).filter(Entity.id == entity_id).first()
+    if not entity:
+        raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
-    db.delete(person)
+    db.delete(entity)
     db.commit()
-    return {"message": "Persona eliminada correctamente"}
+    return {"message": "Entidad eliminada correctamente"}
 
 
 # -------------------------
-# METAS POR PERSONA
+# METAS POR ENTIDAD
 # -------------------------
-@app.post("/person-indicator-targets", response_model=PersonIndicatorTargetOut)
-def create_or_update_person_target(payload: PersonIndicatorTargetCreate, db: Session = Depends(get_db)):
+@app.post("/entity-indicator-targets", response_model=EntityIndicatorTargetOut)
+def create_or_update_entity_target(payload: EntityIndicatorTargetCreate, db: Session = Depends(get_db)):
     indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == payload.indicator_id).first()
     if not indicator:
         raise HTTPException(status_code=404, detail="Indicador no encontrado")
-    if indicator.scope_type != "person":
-        raise HTTPException(status_code=400, detail="El indicador no es de tipo persona")
+    if indicator.scope_type != "entity":
+        raise HTTPException(status_code=400, detail="El indicador no es de tipo entidad")
 
-    person = db.query(Person).filter(Person.id == payload.person_id).first()
-    if not person:
-        raise HTTPException(status_code=404, detail="Persona no encontrada")
+    entity = db.query(Entity).filter(Entity.id == payload.entity_id).first()
+    if not entity:
+        raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
-    item = db.query(PersonIndicatorTarget).filter(
-        PersonIndicatorTarget.indicator_id == payload.indicator_id,
-        PersonIndicatorTarget.person_id == payload.person_id
+    item = db.query(EntityIndicatorTarget).filter(
+        EntityIndicatorTarget.indicator_id == payload.indicator_id,
+        EntityIndicatorTarget.entity_id == payload.entity_id
     ).first()
 
     if item:
         item.target_value = payload.target_value
         item.is_active = payload.is_active
     else:
-        item = PersonIndicatorTarget(
+        item = EntityIndicatorTarget(
             indicator_id=payload.indicator_id,
-            person_id=payload.person_id,
+            entity_id=payload.entity_id,
             target_value=payload.target_value,
             is_active=payload.is_active,
         )
@@ -1575,39 +1705,39 @@ def create_or_update_person_target(payload: PersonIndicatorTargetCreate, db: Ses
 
     db.commit()
     db.refresh(item)
-    item = db.query(PersonIndicatorTarget).options(
-        joinedload(PersonIndicatorTarget.indicator),
-        joinedload(PersonIndicatorTarget.person)
-    ).filter(PersonIndicatorTarget.id == item.id).first()
-    return build_person_target_out(item)
+    item = db.query(EntityIndicatorTarget).options(
+        joinedload(EntityIndicatorTarget.indicator),
+        joinedload(EntityIndicatorTarget.entity)
+    ).filter(EntityIndicatorTarget.id == item.id).first()
+    return build_entity_target_out(item)
 
 
-@app.get("/person-indicator-targets", response_model=list[PersonIndicatorTargetOut])
-def list_person_targets(
+@app.get("/entity-indicator-targets", response_model=list[EntityIndicatorTargetOut])
+def list_entity_targets(
     indicator_id: Optional[int] = None,
-    person_id: Optional[int] = None,
+    entity_id: Optional[int] = None,
     active_only: bool = False,
     db: Session = Depends(get_db)
 ):
-    query = db.query(PersonIndicatorTarget).options(
-        joinedload(PersonIndicatorTarget.indicator),
-        joinedload(PersonIndicatorTarget.person)
+    query = db.query(EntityIndicatorTarget).options(
+        joinedload(EntityIndicatorTarget.indicator),
+        joinedload(EntityIndicatorTarget.entity)
     )
 
     if indicator_id:
-        query = query.filter(PersonIndicatorTarget.indicator_id == indicator_id)
-    if person_id:
-        query = query.filter(PersonIndicatorTarget.person_id == person_id)
+        query = query.filter(EntityIndicatorTarget.indicator_id == indicator_id)
+    if entity_id:
+        query = query.filter(EntityIndicatorTarget.entity_id == entity_id)
     if active_only:
-        query = query.filter(PersonIndicatorTarget.is_active == True)
+        query = query.filter(EntityIndicatorTarget.is_active == True)
 
-    items = query.order_by(Person.full_name.asc()).join(PersonIndicatorTarget.person).all()
-    return [build_person_target_out(x) for x in items]
+    items = query.join(EntityIndicatorTarget.entity).order_by(Entity.name.asc()).all()
+    return [build_entity_target_out(x) for x in items]
 
 
-@app.delete("/person-indicator-targets/{target_id}")
-def delete_person_target(target_id: int, db: Session = Depends(get_db)):
-    item = db.query(PersonIndicatorTarget).filter(PersonIndicatorTarget.id == target_id).first()
+@app.delete("/entity-indicator-targets/{target_id}")
+def delete_entity_target(target_id: int, db: Session = Depends(get_db)):
+    item = db.query(EntityIndicatorTarget).filter(EntityIndicatorTarget.id == target_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Asignación no encontrada")
 
@@ -1617,10 +1747,10 @@ def delete_person_target(target_id: int, db: Session = Depends(get_db)):
 
 
 # -------------------------
-# CAPTURA POR PERSONA
+# CAPTURA POR ENTIDAD
 # -------------------------
-@app.get("/person-records/grid", response_model=PersonCaptureGridOut)
-def get_person_capture_grid(
+@app.get("/entity-records/grid", response_model=EntityCaptureGridOut)
+def get_entity_capture_grid(
     indicator_id: int,
     record_date: date,
     db: Session = Depends(get_db)
@@ -1628,41 +1758,41 @@ def get_person_capture_grid(
     indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == indicator_id).first()
     if not indicator:
         raise HTTPException(status_code=404, detail="Indicador no encontrado")
-    if indicator.scope_type != "person":
-        raise HTTPException(status_code=400, detail="El indicador no es de tipo persona")
+    if indicator.scope_type != "entity":
+        raise HTTPException(status_code=400, detail="El indicador no es de tipo entidad")
 
     period_start = record_date.replace(day=1)
     period_end = record_date
 
-    targets = db.query(PersonIndicatorTarget).options(
-        joinedload(PersonIndicatorTarget.person)
+    targets = db.query(EntityIndicatorTarget).options(
+        joinedload(EntityIndicatorTarget.entity)
     ).filter(
-        PersonIndicatorTarget.indicator_id == indicator_id,
-        PersonIndicatorTarget.is_active == True
-    ).join(PersonIndicatorTarget.person).order_by(Person.full_name.asc()).all()
+        EntityIndicatorTarget.indicator_id == indicator_id,
+        EntityIndicatorTarget.is_active == True
+    ).join(EntityIndicatorTarget.entity).order_by(Entity.name.asc()).all()
 
-    current_records = db.query(PersonRecord).filter(
-        PersonRecord.indicator_id == indicator_id,
-        PersonRecord.record_date == record_date
+    current_records = db.query(EntityRecord).filter(
+        EntityRecord.indicator_id == indicator_id,
+        EntityRecord.record_date == record_date
     ).all()
-    current_map = {x.person_id: x for x in current_records}
+    current_map = {x.entity_id: x for x in current_records}
 
     accumulated_rows = db.query(
-        PersonRecord.person_id,
+        EntityRecord.entity_id,
         text("COALESCE(SUM(value), 0) AS accumulated")
     ).filter(
-        PersonRecord.indicator_id == indicator_id,
-        PersonRecord.record_date >= period_start,
-        PersonRecord.record_date <= period_end
-    ).group_by(PersonRecord.person_id).all()
+        EntityRecord.indicator_id == indicator_id,
+        EntityRecord.record_date >= period_start,
+        EntityRecord.record_date <= period_end
+    ).group_by(EntityRecord.entity_id).all()
 
     accumulated_map = {row[0]: float(row[1] or 0) for row in accumulated_rows}
 
     rows = []
     for target in targets:
-        day_record = current_map.get(target.person_id)
+        day_record = current_map.get(target.entity_id)
         day_value = float(day_record.value) if day_record else 0.0
-        accumulated = round(float(accumulated_map.get(target.person_id, 0.0)), 2)
+        accumulated = round(float(accumulated_map.get(target.entity_id, 0.0)), 2)
         target_value = round(float(target.target_value or 0), 2)
         remaining = round(max(target_value - accumulated, 0.0), 2)
 
@@ -1671,12 +1801,13 @@ def get_person_capture_grid(
         else:
             compliance = round(min((accumulated / target_value) * 100.0, 100.0), 2)
 
-        status = calculate_person_status(indicator, compliance)
+        status = calculate_entity_status(indicator, compliance)
 
-        rows.append(PersonCaptureGridRow(
-            person_id=target.person_id,
-            person_code=target.person.code,
-            person_name=target.person.full_name,
+        rows.append(EntityCaptureGridRow(
+            entity_id=target.entity_id,
+            entity_code=target.entity.code,
+            entity_name=target.entity.name,
+            entity_type=target.entity.entity_type,
             target_value=target_value,
             day_value=round(day_value, 2),
             accumulated=accumulated,
@@ -1686,7 +1817,7 @@ def get_person_capture_grid(
             observation=day_record.observation if day_record else None,
         ))
 
-    return PersonCaptureGridOut(
+    return EntityCaptureGridOut(
         indicator_id=indicator.id,
         indicator_code=indicator.code,
         indicator_name=indicator.name,
@@ -1701,19 +1832,19 @@ def get_person_capture_grid(
     )
 
 
-@app.post("/person-records/bulk")
-def save_person_records_bulk(payload: PersonRecordBulkSave, db: Session = Depends(get_db)):
+@app.post("/entity-records/bulk")
+def save_entity_records_bulk(payload: EntityRecordBulkSave, db: Session = Depends(get_db)):
     indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == payload.indicator_id).first()
     if not indicator:
         raise HTTPException(status_code=404, detail="Indicador no encontrado")
-    if indicator.scope_type != "person":
-        raise HTTPException(status_code=400, detail="El indicador no es de tipo persona")
+    if indicator.scope_type != "entity":
+        raise HTTPException(status_code=400, detail="El indicador no es de tipo entidad")
 
     target_map = {
-        x.person_id: x
-        for x in db.query(PersonIndicatorTarget).filter(
-            PersonIndicatorTarget.indicator_id == payload.indicator_id,
-            PersonIndicatorTarget.is_active == True
+        x.entity_id: x
+        for x in db.query(EntityIndicatorTarget).filter(
+            EntityIndicatorTarget.indicator_id == payload.indicator_id,
+            EntityIndicatorTarget.is_active == True
         ).all()
     }
 
@@ -1721,16 +1852,16 @@ def save_person_records_bulk(payload: PersonRecordBulkSave, db: Session = Depend
     deleted = 0
 
     for row in payload.rows:
-        if row.person_id not in target_map:
+        if row.entity_id not in target_map:
             raise HTTPException(
                 status_code=400,
-                detail=f"La persona {row.person_id} no está asociada al indicador"
+                detail=f"La entidad {row.entity_id} no está asociada al indicador"
             )
 
-        existing = db.query(PersonRecord).filter(
-            PersonRecord.indicator_id == payload.indicator_id,
-            PersonRecord.person_id == row.person_id,
-            PersonRecord.record_date == payload.record_date
+        existing = db.query(EntityRecord).filter(
+            EntityRecord.indicator_id == payload.indicator_id,
+            EntityRecord.entity_id == row.entity_id,
+            EntityRecord.record_date == payload.record_date
         ).first()
 
         raw_value = 0 if row.value is None else float(row.value)
@@ -1746,9 +1877,9 @@ def save_person_records_bulk(payload: PersonRecordBulkSave, db: Session = Depend
             existing.value = raw_value
             existing.observation = observation or None
         else:
-            db.add(PersonRecord(
+            db.add(EntityRecord(
                 indicator_id=payload.indicator_id,
-                person_id=row.person_id,
+                entity_id=row.entity_id,
                 record_date=payload.record_date,
                 value=raw_value,
                 observation=observation or None,
@@ -1758,43 +1889,43 @@ def save_person_records_bulk(payload: PersonRecordBulkSave, db: Session = Depend
 
     db.commit()
     return {
-        "message": "Captura por persona guardada correctamente",
+        "message": "Captura por entidad guardada correctamente",
         "saved_rows": saved,
         "deleted_rows": deleted,
     }
 
 
-@app.get("/person-records", response_model=list[PersonRecordOut])
-def list_person_records(
+@app.get("/entity-records", response_model=list[EntityRecordOut])
+def list_entity_records(
     indicator_id: Optional[int] = None,
-    person_id: Optional[int] = None,
+    entity_id: Optional[int] = None,
     year: Optional[int] = None,
     month: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
-    query = db.query(PersonRecord).options(
-        joinedload(PersonRecord.indicator),
-        joinedload(PersonRecord.person)
+    query = db.query(EntityRecord).options(
+        joinedload(EntityRecord.indicator),
+        joinedload(EntityRecord.entity)
     )
 
     if indicator_id:
-        query = query.filter(PersonRecord.indicator_id == indicator_id)
-    if person_id:
-        query = query.filter(PersonRecord.person_id == person_id)
+        query = query.filter(EntityRecord.indicator_id == indicator_id)
+    if entity_id:
+        query = query.filter(EntityRecord.entity_id == entity_id)
     if year:
-        query = query.filter(extract("year", PersonRecord.record_date) == year)
+        query = query.filter(extract("year", EntityRecord.record_date) == year)
     if month:
-        query = query.filter(extract("month", PersonRecord.record_date) == month)
+        query = query.filter(extract("month", EntityRecord.record_date) == month)
 
-    items = query.order_by(PersonRecord.record_date.desc(), PersonRecord.id.desc()).all()
-    return [build_person_record_out(x) for x in items]
+    items = query.order_by(EntityRecord.record_date.desc(), EntityRecord.id.desc()).all()
+    return [build_entity_record_out(x) for x in items]
 
 
 # -------------------------
-# DASHBOARD POR PERSONA
+# DASHBOARD POR ENTIDAD
 # -------------------------
-@app.get("/dashboard/person", response_model=PersonDashboardOut)
-def get_person_dashboard(
+@app.get("/dashboard/entity", response_model=EntityDashboardOut)
+def get_entity_dashboard(
     indicator_id: int,
     year: int,
     month: int,
@@ -1803,26 +1934,26 @@ def get_person_dashboard(
     indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == indicator_id).first()
     if not indicator:
         raise HTTPException(status_code=404, detail="Indicador no encontrado")
-    if indicator.scope_type != "person":
-        raise HTTPException(status_code=400, detail="El indicador no es de tipo persona")
+    if indicator.scope_type != "entity":
+        raise HTTPException(status_code=400, detail="El indicador no es de tipo entidad")
 
     start_date, end_date = get_month_start_end(year, month)
 
-    targets = db.query(PersonIndicatorTarget).options(
-        joinedload(PersonIndicatorTarget.person)
+    targets = db.query(EntityIndicatorTarget).options(
+        joinedload(EntityIndicatorTarget.entity)
     ).filter(
-        PersonIndicatorTarget.indicator_id == indicator_id,
-        PersonIndicatorTarget.is_active == True
-    ).join(PersonIndicatorTarget.person).order_by(Person.full_name.asc()).all()
+        EntityIndicatorTarget.indicator_id == indicator_id,
+        EntityIndicatorTarget.is_active == True
+    ).join(EntityIndicatorTarget.entity).order_by(Entity.name.asc()).all()
 
     accumulated_rows = db.query(
-        PersonRecord.person_id,
+        EntityRecord.entity_id,
         text("COALESCE(SUM(value), 0) AS accumulated")
     ).filter(
-        PersonRecord.indicator_id == indicator_id,
-        PersonRecord.record_date >= start_date,
-        PersonRecord.record_date <= end_date
-    ).group_by(PersonRecord.person_id).all()
+        EntityRecord.indicator_id == indicator_id,
+        EntityRecord.record_date >= start_date,
+        EntityRecord.record_date <= end_date
+    ).group_by(EntityRecord.entity_id).all()
 
     accumulated_map = {row[0]: float(row[1] or 0) for row in accumulated_rows}
 
@@ -1832,7 +1963,7 @@ def get_person_dashboard(
     critical_count = 0
 
     for target in targets:
-        accumulated = round(float(accumulated_map.get(target.person_id, 0.0)), 2)
+        accumulated = round(float(accumulated_map.get(target.entity_id, 0.0)), 2)
         target_value = round(float(target.target_value or 0), 2)
         remaining = round(max(target_value - accumulated, 0.0), 2)
 
@@ -1841,7 +1972,7 @@ def get_person_dashboard(
         else:
             compliance = round(min((accumulated / target_value) * 100.0, 100.0), 2)
 
-        status = calculate_person_status(indicator, compliance)
+        status = calculate_entity_status(indicator, compliance)
 
         if status == "ok":
             ok_count += 1
@@ -1850,10 +1981,11 @@ def get_person_dashboard(
         else:
             critical_count += 1
 
-        ranking.append(PersonDashboardItem(
-            person_id=target.person_id,
-            person_code=target.person.code,
-            person_name=target.person.full_name,
+        ranking.append(EntityDashboardItem(
+            entity_id=target.entity_id,
+            entity_code=target.entity.code,
+            entity_name=target.entity.name,
+            entity_type=target.entity.entity_type,
             target_value=target_value,
             accumulated=accumulated,
             remaining=remaining,
@@ -1861,20 +1993,20 @@ def get_person_dashboard(
             status=status,
         ))
 
-    ranking.sort(key=lambda x: (-x.compliance, x.person_name))
+    ranking.sort(key=lambda x: (-x.compliance, x.entity_name))
 
     average_compliance = round(
         sum(x.compliance for x in ranking) / len(ranking), 2
     ) if ranking else 0
 
-    return PersonDashboardOut(
+    return EntityDashboardOut(
         indicator_id=indicator.id,
         indicator_code=indicator.code,
         indicator_name=indicator.name,
         process_name=indicator.process.name,
         period_label=f"{month:02d}/{year}",
         summary={
-            "total_persons": len(ranking),
+            "total_entities": len(ranking),
             "average_compliance": average_compliance,
             "ok_count": ok_count,
             "warning_count": warning_count,

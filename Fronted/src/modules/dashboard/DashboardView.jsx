@@ -14,6 +14,8 @@ import {
   Cell,
   ComposedChart,
   LabelList,
+  ScatterChart,
+  Scatter,
 } from "recharts";
 import API from "../../api";
 import {
@@ -37,6 +39,7 @@ const CHART_COLORS = {
   ok: "#8fb1ea",
   warning: "#f4c430",
   critical: "#e24b4b",
+  observation: "#6d4cff",
 };
 
 const PIE_COLORS = ["#133a6b", "#2459c3", "#6f97de"];
@@ -67,10 +70,59 @@ function PersonProgressLabel(props) {
   );
 }
 
+function ObservationMarkerLabel(props) {
+  const { x, y, width, payload } = props;
+  if (!payload?.hasObservation) return null;
+
+  return (
+    <text
+      x={x + Number(width || 0) / 2}
+      y={y - 20}
+      textAnchor="middle"
+      fill={CHART_COLORS.observation}
+      fontSize={16}
+      fontWeight={900}
+    >
+      *
+    </text>
+  );
+}
+
+function ObservationScatterShape(props) {
+  const { cx, cy, payload } = props;
+  if (!payload?.hasObservation) return null;
+
+  return (
+    <g>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={7}
+        fill={CHART_COLORS.white}
+        stroke={CHART_COLORS.observation}
+        strokeWidth={2}
+      />
+      <text
+        x={cx}
+        y={cy + 4}
+        textAnchor="middle"
+        fontSize={10}
+        fontWeight={900}
+        fill={CHART_COLORS.observation}
+      >
+        !
+      </text>
+    </g>
+  );
+}
+
 function CustomDailyTooltip({ active, payload, label, valueAxisLabel }) {
   if (!active || !payload?.length) return null;
 
-  const row = payload[0]?.payload || {};
+  const row =
+    payload.find((item) => item?.payload)?.payload ||
+    payload[0]?.payload ||
+    {};
 
   return (
     <div
@@ -80,7 +132,7 @@ function CustomDailyTooltip({ active, payload, label, valueAxisLabel }) {
         borderRadius: 12,
         padding: "10px 12px",
         boxShadow: "0 12px 30px rgba(23,50,77,0.12)",
-        minWidth: 220,
+        minWidth: 240,
       }}
     >
       <div
@@ -98,9 +150,27 @@ function CustomDailyTooltip({ active, payload, label, valueAxisLabel }) {
         {valueAxisLabel}
       </div>
 
+      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 4 }}>
+        <strong>General:</strong> {formatPercent(Number(row.general || 0))}
+      </div>
+
       <div style={{ color: CHART_COLORS.text, fontSize: 13 }}>
         <strong>Estado:</strong> {String(row.status || "ok").toUpperCase()}
       </div>
+
+      {row.observation ? (
+        <div
+          style={{
+            color: CHART_COLORS.text,
+            fontSize: 13,
+            marginTop: 8,
+            paddingTop: 8,
+            borderTop: "1px solid #e6eef8",
+          }}
+        >
+          <strong>Obs.:</strong> {row.observation}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -146,12 +216,33 @@ function getMeasuredValueFromHistoryRow(row) {
   }
 
   if (!values.length) return 0;
-
   return values.reduce((acc, val) => acc + val, 0) / values.length;
 }
 
-function getBarColorByStatus(status) {
+function normalizeStatus(status) {
   const normalized = String(status || "").trim().toLowerCase();
+
+  if (
+    normalized === "critical" ||
+    normalized === "critico" ||
+    normalized === "crítico"
+  ) {
+    return "critical";
+  }
+
+  if (
+    normalized === "warning" ||
+    normalized === "warn" ||
+    normalized === "amarillo"
+  ) {
+    return "warning";
+  }
+
+  return "ok";
+}
+
+function getBarColorByStatus(status) {
+  const normalized = normalizeStatus(status);
 
   if (normalized === "critical") return CHART_COLORS.critical;
   if (normalized === "warning") return CHART_COLORS.warning;
@@ -277,7 +368,9 @@ function buildDailySeriesFromHistory(historyRows, filter) {
     const recordDate = String(item.record_date || "").slice(0, 10);
     const day = Number(recordDate.slice(8, 10)) || index + 1;
     const realValue = Number(getMeasuredValueFromHistoryRow(item) || 0);
-    const status = String(item.status || "ok").toLowerCase();
+    const general = Number(item.general || 0);
+    const status = normalizeStatus(item.status);
+    const observation = String(item.observation || "").trim();
 
     return {
       date: recordDate,
@@ -286,6 +379,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
       fullShortLabel: formatShortDate(recordDate),
       value: realValue,
       trendValue: realValue,
+      general,
       unit: item.unit || "",
       status,
       fill: getBarColorByStatus(status),
@@ -293,15 +387,45 @@ function buildDailySeriesFromHistory(historyRows, filter) {
       shift_a: item.shift_a,
       shift_b: item.shift_b,
       shift_c: item.shift_c,
+      observation,
+      hasObservation: !!observation,
+      observationMarkerY: realValue,
     };
   });
 }
 
-function calculateDynamicAverage(series) {
-  if (!Array.isArray(series) || !series.length) return 0;
+function readHistoryRows(historyData) {
+  if (Array.isArray(historyData)) return historyData;
+  if (Array.isArray(historyData?.rows)) return historyData.rows;
+  if (Array.isArray(historyData?.detail)) return historyData.detail;
+  if (Array.isArray(historyData?.data)) return historyData.data;
+  if (Array.isArray(historyData?.records)) return historyData.records;
+  return [];
+}
 
-  const total = series.reduce((acc, item) => acc + Number(item.value || 0), 0);
-  return total / series.length;
+function readHistorySummary(historyData) {
+  if (!historyData || Array.isArray(historyData)) return null;
+
+  return (
+    historyData.summary ||
+    historyData.totals ||
+    historyData.resume ||
+    historyData.resumen ||
+    historyData.kpis ||
+    null
+  );
+}
+
+function getSummaryValue(summary, keys, fallback = 0) {
+  if (!summary) return fallback;
+
+  for (const key of keys) {
+    if (summary[key] !== undefined && summary[key] !== null) {
+      return Number(summary[key] || 0);
+    }
+  }
+
+  return fallback;
 }
 
 function renderTrendChart({
@@ -377,12 +501,10 @@ function renderTrendChart({
             maxBarSize={expanded ? 46 : 34}
           >
             {processDailySeries.map((entry, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={entry.fill || CHART_COLORS.ok}
-              />
+              <Cell key={`cell-${index}`} fill={entry.fill || CHART_COLORS.ok} />
             ))}
             <LabelList content={<DailyValueTopLabel />} />
+            <LabelList content={<ObservationMarkerLabel />} />
           </Bar>
 
           <Line
@@ -393,6 +515,12 @@ function renderTrendChart({
             strokeWidth={3}
             dot={{ r: expanded ? 4 : 3, fill: CHART_COLORS.navy }}
             activeDot={{ r: expanded ? 6 : 5 }}
+          />
+
+          <Scatter
+            data={processDailySeries.filter((item) => item.hasObservation)}
+            dataKey="observationMarkerY"
+            shape={<ObservationScatterShape />}
           />
         </ComposedChart>
       </ResponsiveContainer>
@@ -447,6 +575,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
   const [dashboardOverview, setDashboardOverview] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
   const [indicatorHistoryRows, setIndicatorHistoryRows] = useState([]);
+  const [historySummary, setHistorySummary] = useState(null);
   const [isTrendExpanded, setIsTrendExpanded] = useState(false);
 
   const [dashboardFilter, setDashboardFilter] = useState({
@@ -476,7 +605,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
 
   const isStandardIndicatorSelected =
     !!selectedDashboardIndicator &&
-    selectedDashboardIndicator.scope_type !== "person";
+    selectedDashboardIndicator.scope_type !== "entity";
 
   const weekRangeOptions = useMemo(() => {
     if (!dashboardFilter.year || !dashboardFilter.month) return [];
@@ -491,6 +620,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       setMessage("");
       setIsTrendExpanded(false);
       setIndicatorHistoryRows([]);
+      setHistorySummary(null);
 
       const filters = {
         ...dashboardFilter,
@@ -516,14 +646,14 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
           (item) => String(item.id) === String(filters.indicator_id)
         );
 
-        if (selectedIndicator?.scope_type === "person") {
+        if (selectedIndicator?.scope_type === "entity") {
           if (!filters.year || !filters.month) {
             throw new Error(
-              "Para dashboard por persona debes seleccionar año y mes."
+              "Para dashboard por entidad debes seleccionar año y mes."
             );
           }
 
-          const data = await API.getPersonDashboard({
+          const data = await API.getEntityDashboard({
             indicator_id: Number(filters.indicator_id),
             year: Number(filters.year),
             month: Number(filters.month),
@@ -531,7 +661,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
 
           setDashboardData({
             ...data,
-            is_person_dashboard: true,
+            is_entity_dashboard: true,
           });
           setDashboardOverview(null);
           return;
@@ -564,16 +694,18 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
 
         setDashboardData({
           ...processData,
-          is_person_dashboard: false,
+          is_entity_dashboard: false,
         });
 
-        setIndicatorHistoryRows(Array.isArray(historyData) ? historyData : []);
+        setIndicatorHistoryRows(readHistoryRows(historyData));
+        setHistorySummary(readHistorySummary(historyData));
         setDashboardOverview(null);
       } else {
         const overview = await API.getDashboardOverview(filters);
         setDashboardOverview(overview);
         setDashboardData(null);
         setIndicatorHistoryRows([]);
+        setHistorySummary(null);
       }
     } catch (err) {
       setMessage(err.message || "No se pudo cargar el dashboard.");
@@ -613,30 +745,31 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     }));
   }, [dashboardOverview]);
 
-  const personDashboardBarData = useMemo(() => {
-    if (!dashboardData?.is_person_dashboard || !dashboardData?.ranking?.length) {
+  const entityDashboardBarData = useMemo(() => {
+    if (!dashboardData?.is_entity_dashboard || !dashboardData?.ranking?.length) {
       return [];
     }
 
     return dashboardData.ranking.map((item) => ({
-      name: formatCompactName(item.person_name, 20),
-      fullName: item.person_name,
+      name: formatCompactName(item.entity_name, 20),
+      fullName: item.entity_name,
       meta: Number(item.target_value || 0),
       acumulado: Number(item.accumulated || 0),
       pendiente: Math.max(Number(item.remaining || 0), 0),
       cumplimiento: Number(item.compliance || 0),
       estado: item.status,
-      personCode: item.person_code,
+      entityCode: item.entity_code,
+      entityType: item.entity_type || "",
     }));
   }, [dashboardData]);
 
-  const personDashboardChartHeight = useMemo(() => {
-    const rows = personDashboardBarData.length;
+  const entityDashboardChartHeight = useMemo(() => {
+    const rows = entityDashboardBarData.length;
     return Math.max(420, rows * 42);
-  }, [personDashboardBarData]);
+  }, [entityDashboardBarData]);
 
   const processDailySeries = useMemo(() => {
-    if (!dashboardData || dashboardData?.is_person_dashboard) return [];
+    if (!dashboardData || dashboardData?.is_entity_dashboard) return [];
 
     if (isStandardIndicatorSelected && indicatorHistoryRows.length) {
       return buildDailySeriesFromHistory(indicatorHistoryRows, dashboardFilter);
@@ -654,8 +787,12 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
           shortLabel: formatShortDate(item.label),
           value: numericValue,
           trendValue: numericValue,
+          general: Number(item.value || 0),
           status: "ok",
           fill: CHART_COLORS.ok,
+          observation: "",
+          hasObservation: false,
+          observationMarkerY: numericValue,
         };
       })
       .sort((a, b) => Number(a.day) - Number(b.day));
@@ -678,46 +815,69 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     return match?.label || "Semana";
   }, [weekRangeOptions, dashboardFilter.week_segment]);
 
-  const dynamicAverageGeneral = useMemo(() => {
-    if (!isStandardIndicatorSelected || !processDailySeries.length) {
-      return Number(dashboardData?.summary?.average_general || 0);
-    }
-    return calculateDynamicAverage(processDailySeries);
-  }, [isStandardIndicatorSelected, processDailySeries, dashboardData]);
-
-  const dynamicTotalRecords = useMemo(() => {
-    if (!isStandardIndicatorSelected || !processDailySeries.length) {
-      return Number(dashboardData?.summary?.total_records || 0);
-    }
-    return processDailySeries.length;
-  }, [isStandardIndicatorSelected, processDailySeries, dashboardData]);
-
-  const dynamicStatusSummary = useMemo(() => {
-    if (!isStandardIndicatorSelected || !processDailySeries.length) {
-      return {
-        ok: Number(dashboardData?.summary?.ok_count || 0),
-        warning: Number(dashboardData?.summary?.warning_count || 0),
-        critical: Number(dashboardData?.summary?.critical_count || 0),
-      };
+  const dashboardAverageGeneral = useMemo(() => {
+    if (historySummary) {
+      return getSummaryValue(
+        historySummary,
+        ["average_general", "promedio_general", "general_average", "average"],
+        Number(dashboardData?.summary?.average_general || 0)
+      );
     }
 
-    return processDailySeries.reduce(
-      (acc, item) => {
-        const status = String(item.status || "").toLowerCase();
+    return Number(dashboardData?.summary?.average_general || 0);
+  }, [historySummary, dashboardData]);
 
-        if (status === "critical") {
-          acc.critical += 1;
-        } else if (status === "warning") {
-          acc.warning += 1;
-        } else {
-          acc.ok += 1;
-        }
+  const dashboardTotalRecords = useMemo(() => {
+    if (historySummary) {
+      return getSummaryValue(
+        historySummary,
+        ["total_records", "records", "registros", "total"],
+        Number(dashboardData?.summary?.total_records || 0)
+      );
+    }
 
-        return acc;
-      },
-      { ok: 0, warning: 0, critical: 0 }
-    );
-  }, [isStandardIndicatorSelected, processDailySeries, dashboardData]);
+    return Number(dashboardData?.summary?.total_records || 0);
+  }, [historySummary, dashboardData]);
+
+  const dashboardOkCount = useMemo(() => {
+    if (historySummary) {
+      return getSummaryValue(
+        historySummary,
+        ["ok_count", "ok", "total_ok"],
+        Number(dashboardData?.summary?.ok_count || 0)
+      );
+    }
+
+    return Number(dashboardData?.summary?.ok_count || 0);
+  }, [historySummary, dashboardData]);
+
+  const dashboardWarningCount = useMemo(() => {
+    if (historySummary) {
+      return getSummaryValue(
+        historySummary,
+        ["warning_count", "warning", "warnings", "total_warning"],
+        Number(dashboardData?.summary?.warning_count || 0)
+      );
+    }
+
+    return Number(dashboardData?.summary?.warning_count || 0);
+  }, [historySummary, dashboardData]);
+
+  const dashboardCriticalCount = useMemo(() => {
+    if (historySummary) {
+      return getSummaryValue(
+        historySummary,
+        ["critical_count", "critical", "criticals", "total_critical"],
+        Number(dashboardData?.summary?.critical_count || 0)
+      );
+    }
+
+    return Number(dashboardData?.summary?.critical_count || 0);
+  }, [historySummary, dashboardData]);
+
+  const observationsCount = useMemo(() => {
+    return processDailySeries.filter((item) => item.hasObservation).length;
+  }, [processDailySeries]);
 
   return (
     <section className="content-card dashboard-master-card">
@@ -1018,11 +1178,11 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
 
       {dashboardData && (
         <>
-          {dashboardData?.is_person_dashboard ? (
+          {dashboardData?.is_entity_dashboard ? (
             <>
               <section className="process-focus-banner">
                 <div>
-                  <div className="section-kicker">INDICADOR POR PERSONA</div>
+                  <div className="section-kicker">INDICADOR POR ENTIDAD</div>
                   <h2>
                     {dashboardData.indicator_code} - {dashboardData.indicator_name}
                   </h2>
@@ -1041,13 +1201,13 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   <strong>
                     {formatPercent(dashboardData.summary.average_compliance)}
                   </strong>
-                  <small>Promedio del indicador por persona</small>
+                  <small>Promedio del indicador por entidad</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
-                  <span>Total personas</span>
-                  <strong>{dashboardData.summary.total_persons}</strong>
-                  <small>Personas evaluadas</small>
+                  <span>Total entidades</span>
+                  <strong>{dashboardData.summary.total_entities}</strong>
+                  <small>Entidades evaluadas</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
@@ -1071,7 +1231,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
 
               <section className="chart-card premium-chart-card full-span">
                 <div className="subsection-title">
-                  Avance por persona frente a la meta
+                  Avance por entidad frente a la meta
                 </div>
 
                 <div
@@ -1085,13 +1245,13 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   <div
                     style={{
                       width: "100%",
-                      height: `${personDashboardChartHeight}px`,
+                      height: `${entityDashboardChartHeight}px`,
                       minHeight: 420,
                     }}
                   >
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart
-                        data={personDashboardBarData}
+                        data={entityDashboardBarData}
                         layout="vertical"
                         margin={{ top: 18, right: 220, left: 18, bottom: 18 }}
                         barCategoryGap={10}
@@ -1110,12 +1270,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                         />
                         <Tooltip
                           formatter={(value, name) => {
-                            if (name === "Acumulado") {
-                              return formatPlainNumber(value);
-                            }
-                            if (name === "Pendiente") {
-                              return formatPlainNumber(value);
-                            }
+                            if (name === "Acumulado") return formatPlainNumber(value);
+                            if (name === "Pendiente") return formatPlainNumber(value);
                             return value;
                           }}
                           labelFormatter={(label, payload) =>
@@ -1166,13 +1322,14 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               </section>
 
               <section className="panel-block">
-                <div className="subsection-title">Ranking por persona</div>
+                <div className="subsection-title">Ranking por entidad</div>
                 <div className="table-wrap">
                   <table>
                     <thead>
                       <tr>
+                        <th>Tipo</th>
                         <th>Código</th>
-                        <th>Persona</th>
+                        <th>Entidad</th>
                         <th>Meta</th>
                         <th>Acumulado</th>
                         <th>Faltante</th>
@@ -1182,9 +1339,10 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                     </thead>
                     <tbody>
                       {(dashboardData.ranking || []).map((item) => (
-                        <tr key={item.person_id}>
-                          <td>{item.person_code}</td>
-                          <td>{item.person_name}</td>
+                        <tr key={item.entity_id}>
+                          <td>{item.entity_type || "-"}</td>
+                          <td>{item.entity_code}</td>
+                          <td>{item.entity_name}</td>
                           <td>{formatPlainNumber(item.target_value)}</td>
                           <td>{formatPlainNumber(item.accumulated)}</td>
                           <td>{formatPlainNumber(item.remaining)}</td>
@@ -1199,7 +1357,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
 
                       {!dashboardData.ranking?.length && (
                         <tr>
-                          <td colSpan="7" className="empty">
+                          <td colSpan="8" className="empty">
                             Sin resultados
                           </td>
                         </tr>
@@ -1231,35 +1389,35 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               <section className="executive-kpi-grid clean-kpis">
                 <div className="executive-kpi blue-main">
                   <span>Promedio general</span>
-                  <strong>{formatPercent(dynamicAverageGeneral)}</strong>
+                  <strong>{formatPercent(dashboardAverageGeneral)}</strong>
                   <small>
-                    {isStandardIndicatorSelected
-                      ? "Promedio dinámico según el filtro aplicado"
+                    {historySummary
+                      ? "Tomado directamente del resumen del histórico"
                       : "Resultado consolidado del proceso"}
                   </small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>Registros</span>
-                  <strong>{dynamicTotalRecords}</strong>
+                  <strong>{dashboardTotalRecords}</strong>
                   <small>Total de capturas analizadas</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>OK</span>
-                  <strong>{dynamicStatusSummary.ok}</strong>
+                  <strong>{dashboardOkCount}</strong>
                   <small>Dentro de rango</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>Warning</span>
-                  <strong>{dynamicStatusSummary.warning}</strong>
+                  <strong>{dashboardWarningCount}</strong>
                   <small>Seguimiento</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>Critical</span>
-                  <strong>{dynamicStatusSummary.critical}</strong>
+                  <strong>{dashboardCriticalCount}</strong>
                   <small>Prioridad alta</small>
                 </div>
               </section>
@@ -1330,6 +1488,12 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       </span>
                       <span>
                         <strong>Rojo:</strong> Critical
+                      </span>
+                      <span>
+                        <strong>* / !</strong> registro con observación
+                      </span>
+                      <span>
+                        <strong>Observaciones:</strong> {observationsCount}
                       </span>
                     </div>
                   )}
@@ -1739,6 +1903,12 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                 </span>
                 <span>
                   <strong>Rojo:</strong> Critical
+                </span>
+                <span>
+                  <strong>* / !</strong> con observación
+                </span>
+                <span>
+                  <strong>Total observaciones:</strong> {observationsCount}
                 </span>
                 {dashboardFilter.period === "week" &&
                   dashboardFilter.week_segment && (

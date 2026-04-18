@@ -35,11 +35,11 @@ function normalizeShifts(shifts) {
 
 function getStableRowId(row, index) {
   if (row.__rowId) return row.__rowId;
-  if (row.person_id && row.record_date) return `${row.person_id}-${row.record_date}`;
+  if (row.entity_id && row.record_date) return `${row.entity_id}-${row.record_date}`;
   return `row-${index}`;
 }
 
-function buildPersonHistorySummary(records) {
+function buildEntityHistorySummary(records) {
   if (!records.length) {
     return {
       total_records: 0,
@@ -117,8 +117,8 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
   const [monthMatrixMeta, setMonthMatrixMeta] = useState(null);
   const [monthMatrixRows, setMonthMatrixRows] = useState([]);
 
-  const [personMatrixMeta, setPersonMatrixMeta] = useState(null);
-  const [personMatrixRows, setPersonMatrixRows] = useState([]);
+  const [entityMatrixMeta, setEntityMatrixMeta] = useState(null);
+  const [entityMatrixRows, setEntityMatrixRows] = useState([]);
 
   const [historyFilter, setHistoryFilter] = useState({
     year: new Date().getFullYear(),
@@ -136,7 +136,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
     );
   }, [historyFilter.indicator_id, indicators]);
 
-  const isPersonHistoryIndicator = selectedHistoryIndicator?.scope_type === "person";
+  const isEntityHistoryIndicator = selectedHistoryIndicator?.scope_type === "entity";
 
   function clearMessageSoon(text) {
     setMessage(text);
@@ -156,6 +156,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
   async function runHistorySearch(customFilters = null) {
     try {
       setLoading(true);
+
       const filters = {
         ...(customFilters || historyFilter),
         level: Number(accessLevel),
@@ -165,29 +166,29 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
         ? indicators.find((item) => String(item.id) === String(filters.indicator_id))
         : null;
 
-      if (selectedIndicator?.scope_type === "person") {
+      if (selectedIndicator?.scope_type === "entity") {
         const indicatorId = Number(filters.indicator_id);
 
-        const [personRecords, personTargets] = await Promise.all([
-          API.getPersonRecords({
+        const [entityRecords, entityTargets] = await Promise.all([
+          API.getEntityRecords({
             indicator_id: indicatorId,
             year: filters.year ? Number(filters.year) : undefined,
             month: filters.month ? Number(filters.month) : undefined,
           }),
-          API.getPersonTargets({
+          API.getEntityTargets({
             indicator_id: indicatorId,
             active_only: true,
           }),
         ]);
 
         const targetMap = new Map(
-          (personTargets || []).map((targetItem) => [
-            Number(targetItem.person_id),
+          (entityTargets || []).map((targetItem) => [
+            Number(targetItem.entity_id),
             Number(targetItem.target_value || 0),
           ])
         );
 
-        const mapped = (personRecords || [])
+        const mapped = (entityRecords || [])
           .filter((item) => {
             if (filters.day) {
               return (
@@ -197,8 +198,8 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
             return true;
           })
           .map((item) => {
-            const personId = Number(item.person_id);
-            const target = Number(targetMap.get(personId) || 0);
+            const entityId = Number(item.entity_id);
+            const target = Number(targetMap.get(entityId) || 0);
             const value = Number(item.value || 0);
 
             let general = 0;
@@ -214,32 +215,33 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
             else if (general > 0) status = "warning";
 
             return {
-              id: `${item.person_id}-${item.record_date}`,
+              id: `${item.entity_id}-${item.record_date}`,
               indicator_id: Number(item.indicator_id),
               indicator_code: item.indicator_code,
               indicator_name: item.indicator_name,
               process_id: Number(selectedIndicator.process_id),
               process_name: selectedIndicator.process_name,
               meeting_level: selectedIndicator.meeting_level,
-              person_id: personId,
-              person_code: item.person_code,
-              person_name: item.person_name,
+              entity_id: entityId,
+              entity_code: item.entity_code,
+              entity_name: item.entity_name,
+              entity_type: item.entity_type || "",
               record_date: item.record_date,
               value,
               general,
               status,
               observation: item.observation || "",
-              unit: "%",
+              unit: selectedIndicator.unit || "%",
               frequency: selectedIndicator.frequency,
               capture_mode: "single",
               shifts: "",
-              scope_type: "person",
+              scope_type: "entity",
               target_value: target,
             };
           });
 
         setHistoryResults(mapped);
-        setHistorySummary(buildPersonHistorySummary(mapped));
+        setHistorySummary(buildEntityHistorySummary(mapped));
         return;
       }
 
@@ -263,9 +265,9 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
   }
 
   async function handleDeleteHistory(item) {
-    if (item.scope_type === "person") {
+    if (item.scope_type === "entity") {
       setMessage(
-        "La eliminación de histórico por persona no está habilitada desde esta vista."
+        "La eliminación del histórico por entidad no está habilitada desde esta vista."
       );
       return;
     }
@@ -302,9 +304,9 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
         (item) => String(item.id) === String(historyFilter.indicator_id)
       );
 
-      if (selected?.scope_type === "person") {
+      if (selected?.scope_type === "entity") {
         setMessage(
-          "Para indicadores por persona usa 'Cargar por persona', no 'Cargar matriz'."
+          "Para indicadores por entidad usa 'Cargar por entidad', no 'Cargar matriz'."
         );
         return;
       }
@@ -381,7 +383,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
     );
   }
 
-  async function handleLoadPersonMatrix() {
+  async function handleLoadEntityMatrix() {
     try {
       if (
         !historyFilter.year ||
@@ -389,7 +391,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
         !historyFilter.indicator_id
       ) {
         setMessage(
-          "Debes seleccionar año, mes e indicador para carga por persona."
+          "Debes seleccionar año, mes e indicador para carga por entidad."
         );
         return;
       }
@@ -403,8 +405,8 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
         return;
       }
 
-      if (selected.scope_type !== "person") {
-        setMessage("El indicador seleccionado no es de tipo persona.");
+      if (selected.scope_type !== "entity") {
+        setMessage("El indicador seleccionado no es de tipo entidad.");
         return;
       }
 
@@ -415,11 +417,11 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
       const month = Number(historyFilter.month);
 
       const [targets, records] = await Promise.all([
-        API.getPersonTargets({
+        API.getEntityTargets({
           indicator_id: indicatorId,
           active_only: true,
         }),
-        API.getPersonRecords({
+        API.getEntityRecords({
           indicator_id: indicatorId,
           year,
           month,
@@ -428,7 +430,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
 
       const recordMap = new Map();
       for (const row of records || []) {
-        const key = `${row.person_id}-${String(row.record_date).slice(0, 10)}`;
+        const key = `${row.entity_id}-${String(row.record_date).slice(0, 10)}`;
         recordMap.set(key, row);
       }
 
@@ -440,14 +442,15 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
           const recordDate = `${year}-${String(month).padStart(2, "0")}-${String(
             day
           ).padStart(2, "0")}`;
-          const key = `${target.person_id}-${recordDate}`;
+          const key = `${target.entity_id}-${recordDate}`;
           const existing = recordMap.get(key);
 
           generatedRows.push({
-            __rowId: `person-${target.person_id}-${recordDate}`,
-            person_id: Number(target.person_id),
-            person_code: target.person_code || "",
-            person_name: target.person_name || "",
+            __rowId: `entity-${target.entity_id}-${recordDate}`,
+            entity_id: Number(target.entity_id),
+            entity_code: target.entity_code || "",
+            entity_name: target.entity_name || "",
+            entity_type: target.entity_type || "",
             target_value: Number(target.target_value || 0),
             record_date: recordDate,
             day,
@@ -460,7 +463,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
         }
       }
 
-      setPersonMatrixMeta({
+      setEntityMatrixMeta({
         indicator_id: indicatorId,
         indicator_code: selected.code,
         indicator_name: selected.name,
@@ -472,8 +475,8 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
         targets: targets || [],
       });
 
-      setPersonMatrixRows(generatedRows);
-      clearMessageSoon("Matriz por persona cargada correctamente");
+      setEntityMatrixRows(generatedRows);
+      clearMessageSoon("Matriz por entidad cargada correctamente");
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -481,15 +484,15 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
     }
   }
 
-  async function handleSavePersonMatrix() {
+  async function handleSaveEntityMatrix() {
     try {
       if (!historyFilter.indicator_id) {
         setMessage("Debes seleccionar un indicador.");
         return;
       }
 
-      if (!personMatrixMeta) {
-        setMessage("Primero debes cargar la matriz por persona.");
+      if (!entityMatrixMeta) {
+        setMessage("Primero debes cargar la matriz por entidad.");
         return;
       }
 
@@ -498,18 +501,18 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
       const indicatorId = Number(historyFilter.indicator_id);
       const groupedByDate = {};
 
-      for (const row of personMatrixRows) {
+      for (const row of entityMatrixRows) {
         const recordDate = String(row.record_date || "").slice(0, 10);
-        const personId = Number(row.person_id);
+        const entityId = Number(row.entity_id);
 
-        if (!recordDate || !personId) continue;
+        if (!recordDate || !entityId) continue;
 
         if (!groupedByDate[recordDate]) {
           groupedByDate[recordDate] = [];
         }
 
         groupedByDate[recordDate].push({
-          person_id: personId,
+          entity_id: entityId,
           value:
             row.value === "" || row.value === null || row.value === undefined
               ? 0
@@ -527,7 +530,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
 
       await Promise.all(
         dates.map((record_date) =>
-          API.savePersonGrid({
+          API.saveEntityGrid({
             indicator_id: indicatorId,
             record_date,
             rows: groupedByDate[record_date],
@@ -535,8 +538,8 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
         )
       );
 
-      clearMessageSoon("Carga por persona guardada correctamente");
-      await handleLoadPersonMatrix();
+      clearMessageSoon("Carga por entidad guardada correctamente");
+      await handleLoadEntityMatrix();
       await runHistorySearch();
     } catch (err) {
       setMessage(err.message);
@@ -545,42 +548,43 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
     }
   }
 
-  function updatePersonMatrix(index, field, value) {
-    setPersonMatrixRows((prev) =>
+  function updateEntityMatrix(index, field, value) {
+    setEntityMatrixRows((prev) =>
       prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
     );
   }
 
-  const personMatrixAccumulated = useMemo(() => {
-    const grouped = personMatrixRows.reduce((acc, row) => {
-      const personId = Number(row.person_id);
-      const personName = String(row.person_name || "").trim();
-      if (!personId || !personName) return acc;
+  const entityMatrixAccumulated = useMemo(() => {
+    const grouped = entityMatrixRows.reduce((acc, row) => {
+      const entityId = Number(row.entity_id);
+      const entityName = String(row.entity_name || "").trim();
+      if (!entityId || !entityName) return acc;
 
       const numericValue =
         row.value === "" || row.value === null || row.value === undefined
           ? 0
           : Number(row.value);
 
-      if (!acc[personId]) {
-        acc[personId] = {
-          person_id: personId,
-          person: personName,
+      if (!acc[entityId]) {
+        acc[entityId] = {
+          entity_id: entityId,
+          entity: entityName,
+          entity_type: row.entity_type || "",
           accumulated: 0,
           records: 0,
           target_value: Number(row.target_value || 0),
         };
       }
 
-      acc[personId].accumulated += Number.isNaN(numericValue) ? 0 : numericValue;
-      acc[personId].records += 1;
+      acc[entityId].accumulated += Number.isNaN(numericValue) ? 0 : numericValue;
+      acc[entityId].records += 1;
       return acc;
     }, {});
 
     return Object.values(grouped).sort((a, b) =>
-      String(a.person).localeCompare(String(b.person))
+      String(a.entity).localeCompare(String(b.entity))
     );
-  }, [personMatrixRows]);
+  }, [entityMatrixRows]);
 
   return (
     <section className="content-card">
@@ -714,18 +718,18 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
           <button
             type="button"
             className="secondary"
-            onClick={handleLoadPersonMatrix}
+            onClick={handleLoadEntityMatrix}
             disabled={loading}
           >
-            Cargar por persona
+            Cargar por entidad
           </button>
           <button
             type="button"
             className="secondary"
-            onClick={handleSavePersonMatrix}
+            onClick={handleSaveEntityMatrix}
             disabled={loading}
           >
-            Guardar por persona
+            Guardar por entidad
           </button>
 
           {monthMatrixMeta && (
@@ -741,16 +745,16 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
             </button>
           )}
 
-          {personMatrixMeta && (
+          {entityMatrixMeta && (
             <button
               type="button"
               className="secondary"
               onClick={() => {
-                setPersonMatrixMeta(null);
-                setPersonMatrixRows([]);
+                setEntityMatrixMeta(null);
+                setEntityMatrixRows([]);
               }}
             >
-              Cerrar personas
+              Cerrar entidades
             </button>
           )}
         </div>
@@ -899,37 +903,37 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
         </section>
       )}
 
-      {personMatrixMeta && (
+      {entityMatrixMeta && (
         <section className="panel-block">
           <div className="subsection-title">
-            Matriz por persona - {personMatrixMeta.indicator_code} -{" "}
-            {personMatrixMeta.indicator_name}
+            Matriz por entidad - {entityMatrixMeta.indicator_code} -{" "}
+            {entityMatrixMeta.indicator_name}
           </div>
 
           <div className="rule-preview compact" style={{ marginBottom: 14 }}>
             <div className="rule-item">
               <span>Proceso</span>
-              <strong>{personMatrixMeta.process_name || "-"}</strong>
+              <strong>{entityMatrixMeta.process_name || "-"}</strong>
             </div>
             <div className="rule-item">
               <span>Unidad</span>
-              <strong>{personMatrixMeta.unit || "-"}</strong>
+              <strong>{entityMatrixMeta.unit || "-"}</strong>
             </div>
             <div className="rule-item">
               <span>Frecuencia</span>
-              <strong>{formatFrequencyLabel(personMatrixMeta.frequency)}</strong>
+              <strong>{formatFrequencyLabel(entityMatrixMeta.frequency)}</strong>
             </div>
             <div className="rule-item">
               <span>Año</span>
-              <strong>{personMatrixMeta.year}</strong>
+              <strong>{entityMatrixMeta.year}</strong>
             </div>
             <div className="rule-item">
               <span>Mes</span>
-              <strong>{personMatrixMeta.month}</strong>
+              <strong>{entityMatrixMeta.month}</strong>
             </div>
             <div className="rule-item">
-              <span>Personas</span>
-              <strong>{personMatrixMeta.targets.length}</strong>
+              <span>Entidades</span>
+              <strong>{entityMatrixMeta.targets.length}</strong>
             </div>
           </div>
 
@@ -937,7 +941,8 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
             <table>
               <thead>
                 <tr>
-                  <th>Persona</th>
+                  <th>Tipo</th>
+                  <th>Entidad</th>
                   <th>Día</th>
                   <th>Meta</th>
                   <th>Valor</th>
@@ -945,10 +950,13 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                 </tr>
               </thead>
               <tbody>
-                {personMatrixRows.map((row, index) => (
+                {entityMatrixRows.map((row, index) => (
                   <tr key={getStableRowId(row, index)}>
                     <td>
-                      <input value={row.person_name} disabled />
+                      <input value={row.entity_type || "-"} disabled />
+                    </td>
+                    <td>
+                      <input value={row.entity_name} disabled />
                     </td>
                     <td>
                       <input value={row.day} disabled />
@@ -962,7 +970,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                         step="0.01"
                         value={row.value}
                         onChange={(e) =>
-                          updatePersonMatrix(index, "value", e.target.value)
+                          updateEntityMatrix(index, "value", e.target.value)
                         }
                         placeholder="Valor"
                       />
@@ -971,7 +979,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                       <input
                         value={row.observation}
                         onChange={(e) =>
-                          updatePersonMatrix(index, "observation", e.target.value)
+                          updateEntityMatrix(index, "observation", e.target.value)
                         }
                         placeholder="Observación"
                       />
@@ -979,9 +987,9 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                   </tr>
                 ))}
 
-                {!personMatrixRows.length && (
+                {!entityMatrixRows.length && (
                   <tr>
-                    <td colSpan="5" className="empty">
+                    <td colSpan="6" className="empty">
                       Sin filas para el período seleccionado
                     </td>
                   </tr>
@@ -992,31 +1000,33 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
 
           <div style={{ height: 18 }} />
 
-          <div className="subsection-title">Acumulado por persona</div>
+          <div className="subsection-title">Acumulado por entidad</div>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Persona</th>
+                  <th>Tipo</th>
+                  <th>Entidad</th>
                   <th>Registros</th>
                   <th>Meta</th>
                   <th>Acumulado del mes</th>
                 </tr>
               </thead>
               <tbody>
-                {personMatrixAccumulated.map((item) => (
-                  <tr key={item.person_id}>
-                    <td>{item.person}</td>
+                {entityMatrixAccumulated.map((item) => (
+                  <tr key={item.entity_id}>
+                    <td>{item.entity_type || "-"}</td>
+                    <td>{item.entity}</td>
                     <td>{item.records}</td>
                     <td>{formatPlainNumber(item.target_value || 0)}</td>
                     <td>{formatPlainNumber(item.accumulated)}</td>
                   </tr>
                 ))}
 
-                {!personMatrixAccumulated.length && (
+                {!entityMatrixAccumulated.length && (
                   <tr>
-                    <td colSpan="4" className="empty">
-                      Aún no hay acumulados por persona
+                    <td colSpan="5" className="empty">
+                      Aún no hay acumulados por entidad
                     </td>
                   </tr>
                 )}
@@ -1100,11 +1110,12 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                 <th>Fecha</th>
                 <th>Proceso</th>
                 <th>Indicador</th>
-                {isPersonHistoryIndicator && <th>Persona</th>}
+                {isEntityHistoryIndicator && <th>Tipo</th>}
+                {isEntityHistoryIndicator && <th>Entidad</th>}
                 <th>Valor</th>
-                {!isPersonHistoryIndicator && <th>A</th>}
-                {!isPersonHistoryIndicator && <th>B</th>}
-                {!isPersonHistoryIndicator && <th>C</th>}
+                {!isEntityHistoryIndicator && <th>A</th>}
+                {!isEntityHistoryIndicator && <th>B</th>}
+                {!isEntityHistoryIndicator && <th>C</th>}
                 <th>General</th>
                 <th>Estado</th>
                 <th>Obs.</th>
@@ -1119,25 +1130,26 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                   <td>
                     {item.indicator_code} - {item.indicator_name}
                   </td>
-                  {isPersonHistoryIndicator && <td>{item.person_name || "-"}</td>}
+                  {isEntityHistoryIndicator && <td>{item.entity_type || "-"}</td>}
+                  {isEntityHistoryIndicator && <td>{item.entity_name || "-"}</td>}
                   <td>
-                    {item.scope_type === "person"
+                    {item.scope_type === "entity"
                       ? formatPlainNumber(item.value ?? 0)
                       : item.capture_mode === "single"
                       ? item.single_value ?? "-"
                       : "-"}
                   </td>
-                  {!isPersonHistoryIndicator && (
+                  {!isEntityHistoryIndicator && (
                     <td>{hasShift(item.shifts, "A") ? item.shift_a ?? "-" : "-"}</td>
                   )}
-                  {!isPersonHistoryIndicator && (
+                  {!isEntityHistoryIndicator && (
                     <td>{hasShift(item.shifts, "B") ? item.shift_b ?? "-" : "-"}</td>
                   )}
-                  {!isPersonHistoryIndicator && (
+                  {!isEntityHistoryIndicator && (
                     <td>{hasShift(item.shifts, "C") ? item.shift_c ?? "-" : "-"}</td>
                   )}
                   <td>
-                    {item.scope_type === "person"
+                    {item.scope_type === "entity"
                       ? formatPercent(item.general)
                       : formatGeneral(item.general, item.unit)}
                   </td>
@@ -1147,7 +1159,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                   <td>{item.observation || "-"}</td>
                   <td>
                     <div className="row-actions">
-                      {item.scope_type !== "person" ? (
+                      {item.scope_type !== "entity" ? (
                         <button
                           type="button"
                           className="table-btn delete"
@@ -1166,7 +1178,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
               {!historyResults.length && (
                 <tr>
                   <td
-                    colSpan={isPersonHistoryIndicator ? "9" : "12"}
+                    colSpan={isEntityHistoryIndicator ? "10" : "12"}
                     className="empty"
                   >
                     Sin resultados
