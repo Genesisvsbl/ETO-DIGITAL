@@ -44,9 +44,10 @@ const EMPTY_INDICATOR_FORM = {
   scope_type: "standard",
 };
 
-const EMPTY_PERSON_FORM = {
+const EMPTY_ENTITY_FORM = {
   code: "",
-  full_name: "",
+  name: "",
+  entity_type: "",
   is_active: true,
 };
 
@@ -103,21 +104,22 @@ export default function App() {
 
   const [processes, setProcesses] = useState([]);
   const [indicators, setIndicators] = useState([]);
-  const [persons, setPersons] = useState([]);
+  const [entities, setEntities] = useState([]);
 
   const [editingProcessId, setEditingProcessId] = useState(null);
   const [editingIndicatorId, setEditingIndicatorId] = useState(null);
+  const [editingEntityId, setEditingEntityId] = useState(null);
 
   const [processForm, setProcessForm] = useState(EMPTY_PROCESS_FORM);
   const [indicatorForm, setIndicatorForm] = useState(EMPTY_INDICATOR_FORM);
-  const [personForm, setPersonForm] = useState(EMPTY_PERSON_FORM);
+  const [entityForm, setEntityForm] = useState(EMPTY_ENTITY_FORM);
 
-  const [selectedIndicatorForPersons, setSelectedIndicatorForPersons] =
+  const [selectedIndicatorForEntities, setSelectedIndicatorForEntities] =
     useState(null);
-  const [selectedIndicatorPersonTargets, setSelectedIndicatorPersonTargets] =
+  const [selectedIndicatorEntityTargets, setSelectedIndicatorEntityTargets] =
     useState([]);
-  const [selectedPersonId, setSelectedPersonId] = useState("");
-  const [selectedPersonTargetValue, setSelectedPersonTargetValue] =
+  const [selectedEntityId, setSelectedEntityId] = useState("");
+  const [selectedEntityTargetValue, setSelectedEntityTargetValue] =
     useState("");
 
   useEffect(() => {
@@ -149,15 +151,15 @@ export default function App() {
     try {
       setLoading(true);
 
-      const [processList, indicatorList, personList] = await Promise.all([
+      const [processList, indicatorList, entityList] = await Promise.all([
         API.getProcesses(Number(accessLevel)),
         API.getIndicators({ level: Number(accessLevel) }),
-        API.getPersons(),
+        API.getEntities(),
       ]);
 
       setProcesses(processList);
       setIndicators(indicatorList);
-      setPersons(personList);
+      setEntities(entityList);
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -165,10 +167,10 @@ export default function App() {
     }
   }
 
-  async function loadPersons() {
-    const personList = await API.getPersons();
-    setPersons(personList);
-    return personList;
+  async function loadEntities() {
+    const entityList = await API.getEntities();
+    setEntities(entityList);
+    return entityList;
   }
 
   function clearMessageSoon(text) {
@@ -205,16 +207,17 @@ export default function App() {
     setTab("portal");
     setProcesses([]);
     setIndicators([]);
-    setPersons([]);
+    setEntities([]);
     setEditingProcessId(null);
     setEditingIndicatorId(null);
+    setEditingEntityId(null);
     setProcessForm(EMPTY_PROCESS_FORM);
     setIndicatorForm(EMPTY_INDICATOR_FORM);
-    setPersonForm(EMPTY_PERSON_FORM);
-    setSelectedIndicatorForPersons(null);
-    setSelectedIndicatorPersonTargets([]);
-    setSelectedPersonId("");
-    setSelectedPersonTargetValue("");
+    setEntityForm(EMPTY_ENTITY_FORM);
+    setSelectedIndicatorForEntities(null);
+    setSelectedIndicatorEntityTargets([]);
+    setSelectedEntityId("");
+    setSelectedEntityTargetValue("");
     setMessage("");
   }
 
@@ -232,6 +235,11 @@ export default function App() {
       meeting_level: Number(accessLevel) || 1,
     });
     setEditingIndicatorId(null);
+  }
+
+  function resetEntityForm() {
+    setEntityForm(EMPTY_ENTITY_FORM);
+    setEditingEntityId(null);
   }
 
   async function handleCreateProcess(e) {
@@ -376,11 +384,12 @@ export default function App() {
         resetIndicatorForm();
       }
 
-      if (selectedIndicatorForPersons?.id === item.id) {
-        setSelectedIndicatorForPersons(null);
-        setSelectedIndicatorPersonTargets([]);
-        setSelectedPersonId("");
-        setSelectedPersonTargetValue("");
+      if (selectedIndicatorForEntities?.id === item.id) {
+        setSelectedIndicatorForEntities(null);
+        setSelectedIndicatorEntityTargets([]);
+        setSelectedEntityId("");
+        setSelectedEntityTargetValue("");
+        resetEntityForm();
       }
 
       clearMessageSoon("Indicador eliminado correctamente");
@@ -406,20 +415,21 @@ export default function App() {
     });
   }
 
-  async function handleLoadIndicatorPersonTargets(indicator) {
+  async function handleLoadIndicatorEntityTargets(indicator) {
     try {
       setLoading(true);
       setTab("indicators");
-      setSelectedIndicatorForPersons(indicator);
+      setSelectedIndicatorForEntities(indicator);
 
-      const targets = await API.getPersonTargets({
+      const targets = await API.getEntityTargets({
         indicator_id: indicator.id,
         active_only: true,
       });
 
-      setSelectedIndicatorPersonTargets(targets || []);
-      setSelectedPersonId("");
-      setSelectedPersonTargetValue("");
+      setSelectedIndicatorEntityTargets(targets || []);
+      setSelectedEntityId("");
+      setSelectedEntityTargetValue("");
+      resetEntityForm();
       clearMessageSoon("Entidades del indicador cargadas correctamente");
     } catch (err) {
       setMessage(err.message);
@@ -428,48 +438,65 @@ export default function App() {
     }
   }
 
-  async function handleCreatePerson() {
+  async function handleCreateEntity() {
     try {
       setLoading(true);
 
       const payload = {
-        code: String(personForm.code || "").trim(),
-        full_name: String(personForm.full_name || "").trim(),
-        is_active: Boolean(personForm.is_active),
+        code: String(entityForm.code || "").trim(),
+        name: String(entityForm.name || "").trim(),
+        entity_type: String(entityForm.entity_type || "").trim(),
+        is_active: Boolean(entityForm.is_active),
       };
 
-      if (!payload.full_name) {
+      if (!payload.name) {
         throw new Error("Debes ingresar el nombre de la entidad");
       }
 
-      const created = await API.createPerson(payload);
-      const personList = await loadPersons();
+      if (!payload.entity_type) {
+        throw new Error("Debes ingresar el tipo de entidad");
+      }
 
-      setPersonForm(EMPTY_PERSON_FORM);
+      let savedEntity = null;
 
-      if (created?.id) {
-        setSelectedPersonId(String(created.id));
+      if (editingEntityId) {
+        savedEntity = await API.updateEntity(editingEntityId, payload);
+        clearMessageSoon("Entidad actualizada correctamente");
       } else {
-        const matchedPerson = personList.find((item) => {
+        savedEntity = await API.createEntity(payload);
+        clearMessageSoon("Entidad creada correctamente");
+      }
+
+      const entityList = await loadEntities();
+
+      if (savedEntity?.id) {
+        setSelectedEntityId(String(savedEntity.id));
+      } else {
+        const matchedEntity = entityList.find((item) => {
           const sameCode =
             payload.code &&
             String(item.code || "").trim().toLowerCase() ===
               payload.code.toLowerCase();
 
           const sameName =
-            String(item.full_name || item.name || "")
+            String(item.name || "")
               .trim()
-              .toLowerCase() === payload.full_name.toLowerCase();
+              .toLowerCase() === payload.name.toLowerCase();
 
-          return sameCode || sameName;
+          const sameType =
+            String(item.entity_type || "")
+              .trim()
+              .toLowerCase() === payload.entity_type.toLowerCase();
+
+          return (sameCode || sameName) && sameType;
         });
 
-        if (matchedPerson?.id) {
-          setSelectedPersonId(String(matchedPerson.id));
+        if (matchedEntity?.id) {
+          setSelectedEntityId(String(matchedEntity.id));
         }
       }
 
-      clearMessageSoon("Entidad creada correctamente");
+      resetEntityForm();
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -477,37 +504,86 @@ export default function App() {
     }
   }
 
-  async function handleCreateOrUpdatePersonTarget() {
+  function handleEditEntity(item) {
+    setEditingEntityId(item.id);
+    setEntityForm({
+      code: item.entity_code || item.code || "",
+      name: item.entity_name || item.name || "",
+      entity_type: item.entity_type || "",
+      is_active: item.is_active ?? true,
+    });
+  }
+
+  async function handleDeleteEntity(item) {
+    const entityId = item.entity_id || item.id;
+    const entityName = item.entity_name || item.name || "-";
+
+    const ok = window.confirm(
+      `¿Deseas eliminar la entidad "${entityName}"?`
+    );
+    if (!ok) return;
+
     try {
-      if (!selectedIndicatorForPersons?.id) {
+      setLoading(true);
+      await API.deleteEntity(entityId);
+
+      if (editingEntityId === entityId) {
+        resetEntityForm();
+      }
+
+      if (selectedEntityId && Number(selectedEntityId) === Number(entityId)) {
+        setSelectedEntityId("");
+      }
+
+      await loadEntities();
+
+      if (selectedIndicatorForEntities?.id) {
+        const targets = await API.getEntityTargets({
+          indicator_id: selectedIndicatorForEntities.id,
+          active_only: true,
+        });
+        setSelectedIndicatorEntityTargets(targets || []);
+      }
+
+      clearMessageSoon("Entidad eliminada correctamente");
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCreateOrUpdateEntityTarget() {
+    try {
+      if (!selectedIndicatorForEntities?.id) {
         throw new Error("Primero debes seleccionar un indicador");
       }
 
-      if (!selectedPersonId) {
+      if (!selectedEntityId) {
         throw new Error("Debes seleccionar una entidad");
       }
 
       setLoading(true);
 
-      await API.createOrUpdatePersonTarget({
-        indicator_id: Number(selectedIndicatorForPersons.id),
-        person_id: Number(selectedPersonId),
+      await API.createOrUpdateEntityTarget({
+        indicator_id: Number(selectedIndicatorForEntities.id),
+        entity_id: Number(selectedEntityId),
         target_value:
-          selectedPersonTargetValue === "" ||
-          selectedPersonTargetValue === null
-            ? Number(selectedIndicatorForPersons.target_value || 0)
-            : Number(selectedPersonTargetValue),
+          selectedEntityTargetValue === "" ||
+          selectedEntityTargetValue === null
+            ? Number(selectedIndicatorForEntities.target_value || 0)
+            : Number(selectedEntityTargetValue),
         is_active: true,
       });
 
-      const targets = await API.getPersonTargets({
-        indicator_id: selectedIndicatorForPersons.id,
+      const targets = await API.getEntityTargets({
+        indicator_id: selectedIndicatorForEntities.id,
         active_only: true,
       });
 
-      setSelectedIndicatorPersonTargets(targets || []);
-      setSelectedPersonId("");
-      setSelectedPersonTargetValue("");
+      setSelectedIndicatorEntityTargets(targets || []);
+      setSelectedEntityId("");
+      setSelectedEntityTargetValue("");
       clearMessageSoon("Entidad asociada correctamente");
     } catch (err) {
       setMessage(err.message);
@@ -516,24 +592,24 @@ export default function App() {
     }
   }
 
-  async function handleDeletePersonTarget(item) {
+  async function handleDeleteEntityTarget(item) {
     const ok = window.confirm(
-      `¿Deseas quitar a "${item.person_name || item.entity_name}" del indicador "${
-        selectedIndicatorForPersons?.name || ""
+      `¿Deseas quitar a "${item.entity_name}" del indicador "${
+        selectedIndicatorForEntities?.name || ""
       }"?`
     );
     if (!ok) return;
 
     try {
       setLoading(true);
-      await API.deletePersonTarget(item.id);
+      await API.deleteEntityTarget(item.id);
 
-      if (selectedIndicatorForPersons?.id) {
-        const targets = await API.getPersonTargets({
-          indicator_id: selectedIndicatorForPersons.id,
+      if (selectedIndicatorForEntities?.id) {
+        const targets = await API.getEntityTargets({
+          indicator_id: selectedIndicatorForEntities.id,
           active_only: true,
         });
-        setSelectedIndicatorPersonTargets(targets || []);
+        setSelectedIndicatorEntityTargets(targets || []);
       }
 
       clearMessageSoon("Entidad quitada del indicador");
@@ -792,30 +868,23 @@ export default function App() {
             handleDeleteIndicator={handleDeleteIndicator}
             resetIndicatorForm={resetIndicatorForm}
             toggleShift={toggleShift}
-            entities={persons}
-            selectedIndicatorForEntities={selectedIndicatorForPersons}
-            selectedIndicatorEntityTargets={selectedIndicatorPersonTargets}
-            selectedEntityId={selectedPersonId}
-            selectedEntityTargetValue={selectedPersonTargetValue}
-            setSelectedEntityId={setSelectedPersonId}
-            setSelectedEntityTargetValue={setSelectedPersonTargetValue}
-            handleLoadIndicatorEntityTargets={handleLoadIndicatorPersonTargets}
-            handleCreateOrUpdateEntityTarget={handleCreateOrUpdatePersonTarget}
-            handleDeleteEntityTarget={handleDeletePersonTarget}
-            entityForm={{
-              code: personForm.code,
-              name: personForm.full_name,
-              entity_type: "persona",
-              is_active: personForm.is_active,
-            }}
-            setEntityForm={(next) =>
-              setPersonForm({
-                code: next.code ?? "",
-                full_name: next.name ?? "",
-                is_active: next.is_active ?? true,
-              })
-            }
-            handleCreateEntity={handleCreatePerson}
+            entities={entities}
+            selectedIndicatorForEntities={selectedIndicatorForEntities}
+            selectedIndicatorEntityTargets={selectedIndicatorEntityTargets}
+            selectedEntityId={selectedEntityId}
+            selectedEntityTargetValue={selectedEntityTargetValue}
+            setSelectedEntityId={setSelectedEntityId}
+            setSelectedEntityTargetValue={setSelectedEntityTargetValue}
+            handleLoadIndicatorEntityTargets={handleLoadIndicatorEntityTargets}
+            handleCreateOrUpdateEntityTarget={handleCreateOrUpdateEntityTarget}
+            handleDeleteEntityTarget={handleDeleteEntityTarget}
+            entityForm={entityForm}
+            setEntityForm={setEntityForm}
+            handleCreateEntity={handleCreateEntity}
+            handleEditEntity={handleEditEntity}
+            handleDeleteEntity={handleDeleteEntity}
+            editingEntityId={editingEntityId}
+            resetEntityForm={resetEntityForm}
             loading={loading}
           />
         )}

@@ -40,6 +40,9 @@ function buildQuery(params = {}) {
 }
 
 const API = {
+  // =========================
+  // PROCESOS
+  // =========================
   getProcesses: (level) =>
     request(`/processes${level ? `?level=${level}` : ""}`),
 
@@ -60,6 +63,9 @@ const API = {
       method: "DELETE",
     }),
 
+  // =========================
+  // INDICADORES
+  // =========================
   getIndicators: (params = {}) => {
     const q = buildQuery({
       process_id: params.process_id,
@@ -104,6 +110,9 @@ const API = {
       method: "DELETE",
     }),
 
+  // =========================
+  // CAPTURA DIARIA ESTÁNDAR
+  // =========================
   saveDailyRecord: (payload) =>
     request("/daily-records", {
       method: "POST",
@@ -130,6 +139,9 @@ const API = {
     return request(`/daily-records/by-date?${q}`);
   },
 
+  // =========================
+  // MATRIZ / CARGA MASIVA ESTÁNDAR
+  // =========================
   getMonthMatrix: ({ indicator_id, year, month }) => {
     const q = buildQuery({
       indicator_id,
@@ -155,7 +167,7 @@ const API = {
     API.saveMonthMatrix({ indicator_id, rows }),
 
   // =========================
-  // ENTITIES
+  // ENTIDADES
   // =========================
   getEntities: ({ active_only, entity_type } = {}) => {
     const q = buildQuery({
@@ -199,7 +211,7 @@ const API = {
     }),
 
   // =========================
-  // ENTITY TARGETS
+  // METAS POR ENTIDAD
   // =========================
   getEntityTargets: ({ indicator_id, entity_id, active_only } = {}) => {
     const q = buildQuery({
@@ -227,7 +239,7 @@ const API = {
     }),
 
   // =========================
-  // ENTITY RECORDS
+  // CAPTURA POR ENTIDAD
   // =========================
   getEntityCaptureGrid: ({ indicator_id, record_date }) => {
     const q = buildQuery({
@@ -262,7 +274,7 @@ const API = {
   },
 
   // =========================
-  // HISTORY
+  // HISTÓRICO ESTÁNDAR
   // =========================
   getHistory: ({ year, month, day, level, process_id, indicator_id }) => {
     const q = buildQuery({
@@ -293,48 +305,6 @@ const API = {
       indicator_id,
     });
     return request(`/history/summary${q ? `?${q}` : ""}`);
-  },
-
-  getEntityHistory: ({
-    year,
-    month,
-    day,
-    level,
-    process_id,
-    indicator_id,
-    entity_id,
-  }) => {
-    const q = buildQuery({
-      year,
-      month,
-      day,
-      level,
-      process_id,
-      indicator_id,
-      entity_id,
-    });
-    return request(`/history/entity${q ? `?${q}` : ""}`);
-  },
-
-  getEntityHistorySummary: ({
-    year,
-    month,
-    day,
-    level,
-    process_id,
-    indicator_id,
-    entity_id,
-  }) => {
-    const q = buildQuery({
-      year,
-      month,
-      day,
-      level,
-      process_id,
-      indicator_id,
-      entity_id,
-    });
-    return request(`/history/entity/summary${q ? `?${q}` : ""}`);
   },
 
   // =========================

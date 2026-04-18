@@ -70,11 +70,15 @@ export default function IndicatorsView({
   entityForm = {
     code: "",
     name: "",
-    entity_type: "persona",
+    entity_type: "",
     is_active: true,
   },
   setEntityForm = () => {},
   handleCreateEntity = () => {},
+  handleEditEntity = () => {},
+  handleDeleteEntity = () => {},
+  editingEntityId = null,
+  resetEntityForm = () => {},
 }) {
   const [entityFilter, setEntityFilter] = useState("");
 
@@ -568,7 +572,9 @@ export default function IndicatorsView({
             }}
           >
             <div className="panel-block" style={{ margin: 0 }}>
-              <div className="subsection-title">Crear entidad nueva</div>
+              <div className="subsection-title">
+                {editingEntityId ? "Editar entidad" : "Crear entidad nueva"}
+              </div>
 
               <div className="form">
                 <div className="field">
@@ -635,8 +641,18 @@ export default function IndicatorsView({
                     className="secondary"
                     onClick={handleCreateEntity}
                   >
-                    Guardar entidad
+                    {editingEntityId ? "Actualizar entidad" : "Guardar entidad"}
                   </button>
+
+                  {editingEntityId && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={resetEntityForm}
+                    >
+                      Cancelar edición
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -736,7 +752,23 @@ export default function IndicatorsView({
                     <td>{item.target_value ?? 0}</td>
                     <td>{item.is_active ? "Activa" : "Inactiva"}</td>
                     <td>
-                      <div className="row-actions">
+                      <div className="row-actions" style={{ flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          className="table-btn edit"
+                          onClick={() => handleEditEntity(item)}
+                        >
+                          Editar entidad
+                        </button>
+
+                        <button
+                          type="button"
+                          className="table-btn delete"
+                          onClick={() => handleDeleteEntity(item)}
+                        >
+                          Eliminar entidad
+                        </button>
+
                         <button
                           type="button"
                           className="table-btn delete"
