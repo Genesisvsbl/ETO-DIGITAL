@@ -44,10 +44,9 @@ const EMPTY_INDICATOR_FORM = {
   scope_type: "standard",
 };
 
-const EMPTY_ENTITY_FORM = {
+const EMPTY_PERSON_FORM = {
   code: "",
-  name: "",
-  entity_type: "persona",
+  full_name: "",
   is_active: true,
 };
 
@@ -104,21 +103,21 @@ export default function App() {
 
   const [processes, setProcesses] = useState([]);
   const [indicators, setIndicators] = useState([]);
-  const [entities, setEntities] = useState([]);
+  const [persons, setPersons] = useState([]);
 
   const [editingProcessId, setEditingProcessId] = useState(null);
   const [editingIndicatorId, setEditingIndicatorId] = useState(null);
 
   const [processForm, setProcessForm] = useState(EMPTY_PROCESS_FORM);
   const [indicatorForm, setIndicatorForm] = useState(EMPTY_INDICATOR_FORM);
-  const [entityForm, setEntityForm] = useState(EMPTY_ENTITY_FORM);
+  const [personForm, setPersonForm] = useState(EMPTY_PERSON_FORM);
 
-  const [selectedIndicatorForEntities, setSelectedIndicatorForEntities] =
+  const [selectedIndicatorForPersons, setSelectedIndicatorForPersons] =
     useState(null);
-  const [selectedIndicatorEntityTargets, setSelectedIndicatorEntityTargets] =
+  const [selectedIndicatorPersonTargets, setSelectedIndicatorPersonTargets] =
     useState([]);
-  const [selectedEntityId, setSelectedEntityId] = useState("");
-  const [selectedEntityTargetValue, setSelectedEntityTargetValue] =
+  const [selectedPersonId, setSelectedPersonId] = useState("");
+  const [selectedPersonTargetValue, setSelectedPersonTargetValue] =
     useState("");
 
   useEffect(() => {
@@ -150,15 +149,15 @@ export default function App() {
     try {
       setLoading(true);
 
-      const [processList, indicatorList, entityList] = await Promise.all([
+      const [processList, indicatorList, personList] = await Promise.all([
         API.getProcesses(Number(accessLevel)),
         API.getIndicators({ level: Number(accessLevel) }),
-        API.getEntities(),
+        API.getPersons(),
       ]);
 
       setProcesses(processList);
       setIndicators(indicatorList);
-      setEntities(entityList);
+      setPersons(personList);
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -166,10 +165,10 @@ export default function App() {
     }
   }
 
-  async function loadEntities() {
-    const entityList = await API.getEntities();
-    setEntities(entityList);
-    return entityList;
+  async function loadPersons() {
+    const personList = await API.getPersons();
+    setPersons(personList);
+    return personList;
   }
 
   function clearMessageSoon(text) {
@@ -206,16 +205,16 @@ export default function App() {
     setTab("portal");
     setProcesses([]);
     setIndicators([]);
-    setEntities([]);
+    setPersons([]);
     setEditingProcessId(null);
     setEditingIndicatorId(null);
     setProcessForm(EMPTY_PROCESS_FORM);
     setIndicatorForm(EMPTY_INDICATOR_FORM);
-    setEntityForm(EMPTY_ENTITY_FORM);
-    setSelectedIndicatorForEntities(null);
-    setSelectedIndicatorEntityTargets([]);
-    setSelectedEntityId("");
-    setSelectedEntityTargetValue("");
+    setPersonForm(EMPTY_PERSON_FORM);
+    setSelectedIndicatorForPersons(null);
+    setSelectedIndicatorPersonTargets([]);
+    setSelectedPersonId("");
+    setSelectedPersonTargetValue("");
     setMessage("");
   }
 
@@ -377,11 +376,11 @@ export default function App() {
         resetIndicatorForm();
       }
 
-      if (selectedIndicatorForEntities?.id === item.id) {
-        setSelectedIndicatorForEntities(null);
-        setSelectedIndicatorEntityTargets([]);
-        setSelectedEntityId("");
-        setSelectedEntityTargetValue("");
+      if (selectedIndicatorForPersons?.id === item.id) {
+        setSelectedIndicatorForPersons(null);
+        setSelectedIndicatorPersonTargets([]);
+        setSelectedPersonId("");
+        setSelectedPersonTargetValue("");
       }
 
       clearMessageSoon("Indicador eliminado correctamente");
@@ -407,20 +406,20 @@ export default function App() {
     });
   }
 
-  async function handleLoadIndicatorEntityTargets(indicator) {
+  async function handleLoadIndicatorPersonTargets(indicator) {
     try {
       setLoading(true);
       setTab("indicators");
-      setSelectedIndicatorForEntities(indicator);
+      setSelectedIndicatorForPersons(indicator);
 
-      const targets = await API.getEntityTargets({
+      const targets = await API.getPersonTargets({
         indicator_id: indicator.id,
         active_only: true,
       });
 
-      setSelectedIndicatorEntityTargets(targets || []);
-      setSelectedEntityId("");
-      setSelectedEntityTargetValue("");
+      setSelectedIndicatorPersonTargets(targets || []);
+      setSelectedPersonId("");
+      setSelectedPersonTargetValue("");
       clearMessageSoon("Entidades del indicador cargadas correctamente");
     } catch (err) {
       setMessage(err.message);
@@ -429,45 +428,44 @@ export default function App() {
     }
   }
 
-  async function handleCreateEntity() {
+  async function handleCreatePerson() {
     try {
       setLoading(true);
 
       const payload = {
-        code: String(entityForm.code || "").trim(),
-        name: String(entityForm.name || "").trim(),
-        entity_type: String(entityForm.entity_type || "persona").trim(),
-        is_active: Boolean(entityForm.is_active),
+        code: String(personForm.code || "").trim(),
+        full_name: String(personForm.full_name || "").trim(),
+        is_active: Boolean(personForm.is_active),
       };
 
-      if (!payload.name) {
+      if (!payload.full_name) {
         throw new Error("Debes ingresar el nombre de la entidad");
       }
 
-      const created = await API.createEntity(payload);
-      const entityList = await loadEntities();
+      const created = await API.createPerson(payload);
+      const personList = await loadPersons();
 
-      setEntityForm(EMPTY_ENTITY_FORM);
+      setPersonForm(EMPTY_PERSON_FORM);
 
       if (created?.id) {
-        setSelectedEntityId(String(created.id));
+        setSelectedPersonId(String(created.id));
       } else {
-        const matchedEntity = entityList.find((item) => {
+        const matchedPerson = personList.find((item) => {
           const sameCode =
             payload.code &&
             String(item.code || "").trim().toLowerCase() ===
               payload.code.toLowerCase();
 
           const sameName =
-            String(item.name || "")
+            String(item.full_name || item.name || "")
               .trim()
-              .toLowerCase() === payload.name.toLowerCase();
+              .toLowerCase() === payload.full_name.toLowerCase();
 
           return sameCode || sameName;
         });
 
-        if (matchedEntity?.id) {
-          setSelectedEntityId(String(matchedEntity.id));
+        if (matchedPerson?.id) {
+          setSelectedPersonId(String(matchedPerson.id));
         }
       }
 
@@ -479,37 +477,37 @@ export default function App() {
     }
   }
 
-  async function handleCreateOrUpdateEntityTarget() {
+  async function handleCreateOrUpdatePersonTarget() {
     try {
-      if (!selectedIndicatorForEntities?.id) {
+      if (!selectedIndicatorForPersons?.id) {
         throw new Error("Primero debes seleccionar un indicador");
       }
 
-      if (!selectedEntityId) {
+      if (!selectedPersonId) {
         throw new Error("Debes seleccionar una entidad");
       }
 
       setLoading(true);
 
-      await API.createOrUpdateEntityTarget({
-        indicator_id: Number(selectedIndicatorForEntities.id),
-        entity_id: Number(selectedEntityId),
+      await API.createOrUpdatePersonTarget({
+        indicator_id: Number(selectedIndicatorForPersons.id),
+        person_id: Number(selectedPersonId),
         target_value:
-          selectedEntityTargetValue === "" ||
-          selectedEntityTargetValue === null
-            ? Number(selectedIndicatorForEntities.target_value || 0)
-            : Number(selectedEntityTargetValue),
+          selectedPersonTargetValue === "" ||
+          selectedPersonTargetValue === null
+            ? Number(selectedIndicatorForPersons.target_value || 0)
+            : Number(selectedPersonTargetValue),
         is_active: true,
       });
 
-      const targets = await API.getEntityTargets({
-        indicator_id: selectedIndicatorForEntities.id,
+      const targets = await API.getPersonTargets({
+        indicator_id: selectedIndicatorForPersons.id,
         active_only: true,
       });
 
-      setSelectedIndicatorEntityTargets(targets || []);
-      setSelectedEntityId("");
-      setSelectedEntityTargetValue("");
+      setSelectedIndicatorPersonTargets(targets || []);
+      setSelectedPersonId("");
+      setSelectedPersonTargetValue("");
       clearMessageSoon("Entidad asociada correctamente");
     } catch (err) {
       setMessage(err.message);
@@ -518,24 +516,24 @@ export default function App() {
     }
   }
 
-  async function handleDeleteEntityTarget(item) {
+  async function handleDeletePersonTarget(item) {
     const ok = window.confirm(
-      `¿Deseas quitar a "${item.entity_name}" del indicador "${
-        selectedIndicatorForEntities?.name || ""
+      `¿Deseas quitar a "${item.person_name || item.entity_name}" del indicador "${
+        selectedIndicatorForPersons?.name || ""
       }"?`
     );
     if (!ok) return;
 
     try {
       setLoading(true);
-      await API.deleteEntityTarget(item.id);
+      await API.deletePersonTarget(item.id);
 
-      if (selectedIndicatorForEntities?.id) {
-        const targets = await API.getEntityTargets({
-          indicator_id: selectedIndicatorForEntities.id,
+      if (selectedIndicatorForPersons?.id) {
+        const targets = await API.getPersonTargets({
+          indicator_id: selectedIndicatorForPersons.id,
           active_only: true,
         });
-        setSelectedIndicatorEntityTargets(targets || []);
+        setSelectedIndicatorPersonTargets(targets || []);
       }
 
       clearMessageSoon("Entidad quitada del indicador");
@@ -794,19 +792,30 @@ export default function App() {
             handleDeleteIndicator={handleDeleteIndicator}
             resetIndicatorForm={resetIndicatorForm}
             toggleShift={toggleShift}
-            entities={entities}
-            selectedIndicatorForEntities={selectedIndicatorForEntities}
-            selectedIndicatorEntityTargets={selectedIndicatorEntityTargets}
-            selectedEntityId={selectedEntityId}
-            selectedEntityTargetValue={selectedEntityTargetValue}
-            setSelectedEntityId={setSelectedEntityId}
-            setSelectedEntityTargetValue={setSelectedEntityTargetValue}
-            handleLoadIndicatorEntityTargets={handleLoadIndicatorEntityTargets}
-            handleCreateOrUpdateEntityTarget={handleCreateOrUpdateEntityTarget}
-            handleDeleteEntityTarget={handleDeleteEntityTarget}
-            entityForm={entityForm}
-            setEntityForm={setEntityForm}
-            handleCreateEntity={handleCreateEntity}
+            entities={persons}
+            selectedIndicatorForEntities={selectedIndicatorForPersons}
+            selectedIndicatorEntityTargets={selectedIndicatorPersonTargets}
+            selectedEntityId={selectedPersonId}
+            selectedEntityTargetValue={selectedPersonTargetValue}
+            setSelectedEntityId={setSelectedPersonId}
+            setSelectedEntityTargetValue={setSelectedPersonTargetValue}
+            handleLoadIndicatorEntityTargets={handleLoadIndicatorPersonTargets}
+            handleCreateOrUpdateEntityTarget={handleCreateOrUpdatePersonTarget}
+            handleDeleteEntityTarget={handleDeletePersonTarget}
+            entityForm={{
+              code: personForm.code,
+              name: personForm.full_name,
+              entity_type: "persona",
+              is_active: personForm.is_active,
+            }}
+            setEntityForm={(next) =>
+              setPersonForm({
+                code: next.code ?? "",
+                full_name: next.name ?? "",
+                is_active: next.is_active ?? true,
+              })
+            }
+            handleCreateEntity={handleCreatePerson}
             loading={loading}
           />
         )}

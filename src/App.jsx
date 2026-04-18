@@ -313,11 +313,11 @@ export default function App() {
         critical_value: Number(indicatorForm.critical_value),
         frequency: indicatorForm.frequency,
         capture_mode:
-          indicatorForm.scope_type === "person"
+          indicatorForm.scope_type === "entity"
             ? "single"
             : indicatorForm.capture_mode,
         shifts:
-          indicatorForm.scope_type === "person" ||
+          indicatorForm.scope_type === "entity" ||
           indicatorForm.capture_mode === "single"
             ? []
             : normalizeShifts(indicatorForm.shifts),
@@ -420,7 +420,7 @@ export default function App() {
       setSelectedIndicatorPersonTargets(targets || []);
       setSelectedPersonId("");
       setSelectedPersonTargetValue("");
-      clearMessageSoon("Personas del indicador cargadas correctamente");
+      clearMessageSoon("Entidades del indicador cargadas correctamente");
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -439,7 +439,7 @@ export default function App() {
       };
 
       if (!payload.full_name) {
-        throw new Error("Debes ingresar el nombre de la persona");
+        throw new Error("Debes ingresar el nombre de la entidad");
       }
 
       const created = await API.createPerson(payload);
@@ -469,7 +469,7 @@ export default function App() {
         }
       }
 
-      clearMessageSoon("Persona creada correctamente");
+      clearMessageSoon("Entidad creada correctamente");
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -484,7 +484,7 @@ export default function App() {
       }
 
       if (!selectedPersonId) {
-        throw new Error("Debes seleccionar una persona");
+        throw new Error("Debes seleccionar una entidad");
       }
 
       setLoading(true);
@@ -508,7 +508,7 @@ export default function App() {
       setSelectedIndicatorPersonTargets(targets || []);
       setSelectedPersonId("");
       setSelectedPersonTargetValue("");
-      clearMessageSoon("Persona asociada correctamente");
+      clearMessageSoon("Entidad asociada correctamente");
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -518,7 +518,7 @@ export default function App() {
 
   async function handleDeletePersonTarget(item) {
     const ok = window.confirm(
-      `¿Deseas quitar a "${item.person_name}" del indicador "${
+      `¿Deseas quitar a "${item.person_name || item.entity_name}" del indicador "${
         selectedIndicatorForPersons?.name || ""
       }"?`
     );
@@ -536,7 +536,7 @@ export default function App() {
         setSelectedIndicatorPersonTargets(targets || []);
       }
 
-      clearMessageSoon("Persona quitada del indicador");
+      clearMessageSoon("Entidad quitada del indicador");
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -792,19 +792,30 @@ export default function App() {
             handleDeleteIndicator={handleDeleteIndicator}
             resetIndicatorForm={resetIndicatorForm}
             toggleShift={toggleShift}
-            persons={persons}
-            selectedIndicatorForPersons={selectedIndicatorForPersons}
-            selectedIndicatorPersonTargets={selectedIndicatorPersonTargets}
-            selectedPersonId={selectedPersonId}
-            selectedPersonTargetValue={selectedPersonTargetValue}
-            setSelectedPersonId={setSelectedPersonId}
-            setSelectedPersonTargetValue={setSelectedPersonTargetValue}
-            handleLoadIndicatorPersonTargets={handleLoadIndicatorPersonTargets}
-            handleCreateOrUpdatePersonTarget={handleCreateOrUpdatePersonTarget}
-            handleDeletePersonTarget={handleDeletePersonTarget}
-            personForm={personForm}
-            setPersonForm={setPersonForm}
-            handleCreatePerson={handleCreatePerson}
+            entities={persons}
+            selectedIndicatorForEntities={selectedIndicatorForPersons}
+            selectedIndicatorEntityTargets={selectedIndicatorPersonTargets}
+            selectedEntityId={selectedPersonId}
+            selectedEntityTargetValue={selectedPersonTargetValue}
+            setSelectedEntityId={setSelectedPersonId}
+            setSelectedEntityTargetValue={setSelectedPersonTargetValue}
+            handleLoadIndicatorEntityTargets={handleLoadIndicatorPersonTargets}
+            handleCreateOrUpdateEntityTarget={handleCreateOrUpdatePersonTarget}
+            handleDeleteEntityTarget={handleDeletePersonTarget}
+            entityForm={{
+              code: personForm.code,
+              name: personForm.full_name,
+              entity_type: "persona",
+              is_active: personForm.is_active,
+            }}
+            setEntityForm={(next) =>
+              setPersonForm({
+                code: next.code ?? "",
+                full_name: next.name ?? "",
+                is_active: next.is_active ?? true,
+              })
+            }
+            handleCreateEntity={handleCreatePerson}
             loading={loading}
           />
         )}
