@@ -43,6 +43,11 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="ETO DIGITAL API")
 
+@app.on_event("startup")
+def reset_db_on_startup():
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
