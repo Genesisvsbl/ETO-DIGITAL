@@ -376,7 +376,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
       date: recordDate,
       day,
       xLabel: String(day),
-      fullShortLabel: formatShortDate(recordDate),
+      fullshortLabel: String(day),
       value: realValue,
       trendValue: realValue,
       general,
