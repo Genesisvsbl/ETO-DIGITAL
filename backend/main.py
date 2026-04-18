@@ -43,7 +43,6 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="ETO DIGITAL API")
 
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -73,6 +72,17 @@ class MonthlyRecordSave(BaseModel):
     rows: List[MonthlyRecordRow]
 
 
+def table_exists_sqlite(connection, table_name: str) -> bool:
+    try:
+        result = connection.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name"),
+            {"table_name": table_name},
+        ).fetchone()
+        return result is not None
+    except Exception:
+        return False
+
+
 def run_safe_migrations():
     with engine.begin() as connection:
         try:
@@ -87,10 +97,14 @@ def run_safe_migrations():
                     row[1]
                     for row in connection.execute(text("PRAGMA table_info(daily_records)")).fetchall()
                 ]
-                entity_columns = [
-                    row[1]
-                    for row in connection.execute(text("PRAGMA table_info(entities)")).fetchall()
-                ] if table_exists_sqlite(connection, "entities") else []
+                entity_columns = (
+                    [
+                        row[1]
+                        for row in connection.execute(text("PRAGMA table_info(entities)")).fetchall()
+                    ]
+                    if table_exists_sqlite(connection, "entities")
+                    else []
+                )
 
                 if "frequency" not in indicator_columns:
                     connection.execute(
@@ -119,31 +133,13 @@ def run_safe_migrations():
                     connection.execute(text("ALTER TABLE daily_records ADD COLUMN shift_c FLOAT"))
 
                 if table_exists_sqlite(connection, "persons") and not table_exists_sqlite(connection, "entities"):
-                    connection.execute(
-                        text(
-                            """
-                            ALTER TABLE persons RENAME TO entities
-                            """
-                        )
-                    )
+                    connection.execute(text("ALTER TABLE persons RENAME TO entities"))
 
                 if table_exists_sqlite(connection, "person_indicator_targets") and not table_exists_sqlite(connection, "entity_indicator_targets"):
-                    connection.execute(
-                        text(
-                            """
-                            ALTER TABLE person_indicator_targets RENAME TO entity_indicator_targets
-                            """
-                        )
-                    )
+                    connection.execute(text("ALTER TABLE person_indicator_targets RENAME TO entity_indicator_targets"))
 
                 if table_exists_sqlite(connection, "person_records") and not table_exists_sqlite(connection, "entity_records"):
-                    connection.execute(
-                        text(
-                            """
-                            ALTER TABLE person_records RENAME TO entity_records
-                            """
-                        )
-                    )
+                    connection.execute(text("ALTER TABLE person_records RENAME TO entity_records"))
 
                 if table_exists_sqlite(connection, "entities"):
                     entity_columns = [
@@ -156,6 +152,7 @@ def run_safe_migrations():
                             connection.execute(text("UPDATE entities SET name = full_name WHERE name IS NULL"))
                         except Exception:
                             pass
+
                     if "entity_type" not in entity_columns:
                         connection.execute(
                             text("ALTER TABLE entities ADD COLUMN entity_type VARCHAR NOT NULL DEFAULT 'persona'")
@@ -276,17 +273,6 @@ def run_safe_migrations():
 
         except Exception:
             pass
-
-
-def table_exists_sqlite(connection, table_name: str) -> bool:
-    try:
-        result = connection.execute(
-            text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name"),
-            {"table_name": table_name},
-        ).fetchone()
-        return result is not None
-    except Exception:
-        return False
 
 
 run_safe_migrations()
@@ -741,6 +727,50 @@ def build_entity_record_out(item: EntityRecord):
         value=item.value,
         observation=item.observation,
     )
+
+
+def build_legacy_person_out(item: Entity):
+    return {
+        "id": item.id,
+        "code": item.code,
+        "full_name": item.name,
+        "name": item.name,
+        "entity_type": item.entity_type,
+        "document": item.document,
+        "position": item.position,
+        "area": item.area,
+        "is_active": item.is_active,
+    }
+
+
+def build_legacy_person_target_out(item: EntityIndicatorTarget):
+    return {
+        "id": item.id,
+        "indicator_id": item.indicator_id,
+        "person_id": item.entity_id,
+        "target_value": item.target_value,
+        "is_active": item.is_active,
+        "indicator_code": item.indicator.code,
+        "indicator_name": item.indicator.name,
+        "person_code": item.entity.code,
+        "person_name": item.entity.name,
+        "entity_type": item.entity.entity_type,
+    }
+
+
+def build_legacy_person_record_out(item: EntityRecord):
+    return {
+        "id": item.id,
+        "indicator_id": item.indicator_id,
+        "indicator_code": item.indicator.code,
+        "indicator_name": item.indicator.name,
+        "person_id": item.entity_id,
+        "person_code": item.entity.code,
+        "person_name": item.entity.name,
+        "record_date": item.record_date,
+        "value": item.value,
+        "observation": item.observation,
+    }
 
 
 @app.get("/")
@@ -1289,6 +1319,9 @@ def save_month_matrix(payload: MonthlyRecordSave, db: Session = Depends(get_db))
     )
 
 
+# -------------------------
+# HISTORY
+# -------------------------
 @app.get("/history", response_model=list[DailyRecordOut])
 def get_history(
     year: Optional[int] = None,
@@ -1363,6 +1396,9 @@ def get_history_summary(
     }
 
 
+# -------------------------
+# DASHBOARD OVERVIEW / PROCESS
+# -------------------------
 @app.get("/dashboard/overview")
 def get_dashboard_overview(
     year: Optional[int] = None,
@@ -2015,3 +2051,219 @@ def get_entity_dashboard(
         },
         ranking=ranking,
     )
+
+
+# -------------------------
+# RUTAS LEGACY / COMPATIBILIDAD
+# -------------------------
+@app.get("/persons")
+def legacy_list_persons(active_only: bool = False, db: Session = Depends(get_db)):
+    query = db.query(Entity)
+    if active_only:
+        query = query.filter(Entity.is_active == True)
+    items = query.order_by(Entity.name.asc()).all()
+    return [build_legacy_person_out(item) for item in items]
+
+
+@app.post("/persons")
+def legacy_create_person(payload: EntityCreate, db: Session = Depends(get_db)):
+    created = create_entity(payload, db)
+    return {
+        "id": created.id,
+        "code": created.code,
+        "full_name": created.name,
+        "name": created.name,
+        "entity_type": created.entity_type,
+        "document": created.document,
+        "position": created.position,
+        "area": created.area,
+        "is_active": created.is_active,
+    }
+
+
+@app.put("/persons/{person_id}")
+def legacy_update_person(person_id: int, payload: EntityCreate, db: Session = Depends(get_db)):
+    updated = update_entity(person_id, payload, db)
+    return {
+        "id": updated.id,
+        "code": updated.code,
+        "full_name": updated.name,
+        "name": updated.name,
+        "entity_type": updated.entity_type,
+        "document": updated.document,
+        "position": updated.position,
+        "area": updated.area,
+        "is_active": updated.is_active,
+    }
+
+
+@app.delete("/persons/{person_id}")
+def legacy_delete_person(person_id: int, db: Session = Depends(get_db)):
+    return delete_entity(person_id, db)
+
+
+@app.get("/person-indicator-targets")
+def legacy_list_person_targets(
+    indicator_id: Optional[int] = None,
+    person_id: Optional[int] = None,
+    active_only: bool = False,
+    db: Session = Depends(get_db)
+):
+    query = db.query(EntityIndicatorTarget).options(
+        joinedload(EntityIndicatorTarget.indicator),
+        joinedload(EntityIndicatorTarget.entity)
+    )
+
+    if indicator_id:
+        query = query.filter(EntityIndicatorTarget.indicator_id == indicator_id)
+    if person_id:
+        query = query.filter(EntityIndicatorTarget.entity_id == person_id)
+    if active_only:
+        query = query.filter(EntityIndicatorTarget.is_active == True)
+
+    items = query.join(EntityIndicatorTarget.entity).order_by(Entity.name.asc()).all()
+    return [build_legacy_person_target_out(item) for item in items]
+
+
+@app.post("/person-indicator-targets")
+def legacy_create_or_update_person_target(payload: dict, db: Session = Depends(get_db)):
+    body = EntityIndicatorTargetCreate(
+        indicator_id=payload.get("indicator_id"),
+        entity_id=payload.get("person_id"),
+        target_value=payload.get("target_value", 0),
+        is_active=payload.get("is_active", True),
+    )
+    item = create_or_update_entity_target(body, db)
+    return {
+        "id": item.id,
+        "indicator_id": item.indicator_id,
+        "person_id": item.entity_id,
+        "target_value": item.target_value,
+        "is_active": item.is_active,
+        "indicator_code": item.indicator_code,
+        "indicator_name": item.indicator_name,
+        "person_code": item.entity_code,
+        "person_name": item.entity_name,
+        "entity_type": item.entity_type,
+    }
+
+
+@app.delete("/person-indicator-targets/{target_id}")
+def legacy_delete_person_target(target_id: int, db: Session = Depends(get_db)):
+    return delete_entity_target(target_id, db)
+
+
+@app.get("/person-records")
+def legacy_list_person_records(
+    indicator_id: Optional[int] = None,
+    person_id: Optional[int] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(EntityRecord).options(
+        joinedload(EntityRecord.indicator),
+        joinedload(EntityRecord.entity)
+    )
+
+    if indicator_id:
+        query = query.filter(EntityRecord.indicator_id == indicator_id)
+    if person_id:
+        query = query.filter(EntityRecord.entity_id == person_id)
+    if year:
+        query = query.filter(extract("year", EntityRecord.record_date) == year)
+    if month:
+        query = query.filter(extract("month", EntityRecord.record_date) == month)
+
+    items = query.order_by(EntityRecord.record_date.desc(), EntityRecord.id.desc()).all()
+    return [build_legacy_person_record_out(item) for item in items]
+
+
+@app.get("/person-records/grid")
+def legacy_get_person_capture_grid(
+    indicator_id: int,
+    record_date: date,
+    db: Session = Depends(get_db)
+):
+    data = get_entity_capture_grid(indicator_id=indicator_id, record_date=record_date, db=db)
+    return {
+        "indicator_id": data.indicator_id,
+        "indicator_code": data.indicator_code,
+        "indicator_name": data.indicator_name,
+        "process_id": data.process_id,
+        "process_name": data.process_name,
+        "meeting_level": data.meeting_level,
+        "unit": data.unit,
+        "frequency": data.frequency,
+        "scope_type": "person",
+        "record_date": data.record_date,
+        "rows": [
+            {
+                "person_id": row.entity_id,
+                "person_code": row.entity_code,
+                "person_name": row.entity_name,
+                "target_value": row.target_value,
+                "day_value": row.day_value,
+                "accumulated": row.accumulated,
+                "remaining": row.remaining,
+                "compliance": row.compliance,
+                "status": row.status,
+                "observation": row.observation,
+            }
+            for row in data.rows
+        ],
+    }
+
+
+@app.post("/person-records/bulk")
+def legacy_save_person_grid(payload: dict, db: Session = Depends(get_db)):
+    body = EntityRecordBulkSave(
+        indicator_id=payload.get("indicator_id"),
+        record_date=payload.get("record_date"),
+        rows=[
+            {
+                "entity_id": row.get("person_id"),
+                "value": row.get("value"),
+                "observation": row.get("observation"),
+            }
+            for row in payload.get("rows", [])
+        ],
+    )
+    return save_entity_records_bulk(body, db)
+
+
+@app.get("/dashboard/person")
+def legacy_person_dashboard(
+    indicator_id: int,
+    year: int,
+    month: int,
+    db: Session = Depends(get_db)
+):
+    data = get_entity_dashboard(indicator_id=indicator_id, year=year, month=month, db=db)
+    return {
+        "indicator_id": data.indicator_id,
+        "indicator_code": data.indicator_code,
+        "indicator_name": data.indicator_name,
+        "process_name": data.process_name,
+        "period_label": data.period_label,
+        "summary": {
+            "total_persons": data.summary["total_entities"],
+            "average_compliance": data.summary["average_compliance"],
+            "ok_count": data.summary["ok_count"],
+            "warning_count": data.summary["warning_count"],
+            "critical_count": data.summary["critical_count"],
+        },
+        "ranking": [
+            {
+                "person_id": row.entity_id,
+                "person_code": row.entity_code,
+                "person_name": row.entity_name,
+                "target_value": row.target_value,
+                "accumulated": row.accumulated,
+                "remaining": row.remaining,
+                "compliance": row.compliance,
+                "status": row.status,
+            }
+            for row in data.ranking
+        ],
+    }
