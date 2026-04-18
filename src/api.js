@@ -1,4 +1,5 @@
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL =
+  import.meta.env.VITE_API_URL || "https://eto-digital.onrender.com";
 
 async function request(path, options = {}) {
   const res = await fetch(`${API_URL}${path}`, {
@@ -74,7 +75,9 @@ const API = {
       body: JSON.stringify({
         ...payload,
         scope_type:
-          payload.scope_type === "entity" ? "person" : payload.scope_type || "standard",
+          payload.scope_type === "entity"
+            ? "person"
+            : payload.scope_type || "standard",
         capture_mode:
           payload.scope_type === "entity" || payload.scope_type === "person"
             ? "single"
@@ -94,7 +97,9 @@ const API = {
       body: JSON.stringify({
         ...payload,
         scope_type:
-          payload.scope_type === "entity" ? "person" : payload.scope_type || "standard",
+          payload.scope_type === "entity"
+            ? "person"
+            : payload.scope_type || "standard",
         capture_mode:
           payload.scope_type === "entity" || payload.scope_type === "person"
             ? "single"
