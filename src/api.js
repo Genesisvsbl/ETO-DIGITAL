@@ -73,11 +73,16 @@ const API = {
       method: "POST",
       body: JSON.stringify({
         ...payload,
-        scope_type: payload.scope_type || "standard",
+        scope_type:
+          payload.scope_type === "entity" ? "person" : payload.scope_type || "standard",
         capture_mode:
-          payload.scope_type === "entity" ? "single" : payload.capture_mode,
+          payload.scope_type === "entity" || payload.scope_type === "person"
+            ? "single"
+            : payload.capture_mode,
         shifts:
-          payload.scope_type === "entity" || payload.capture_mode === "single"
+          payload.scope_type === "entity" ||
+          payload.scope_type === "person" ||
+          payload.capture_mode === "single"
             ? []
             : payload.shifts || [],
       }),
@@ -88,11 +93,16 @@ const API = {
       method: "PUT",
       body: JSON.stringify({
         ...payload,
-        scope_type: payload.scope_type || "standard",
+        scope_type:
+          payload.scope_type === "entity" ? "person" : payload.scope_type || "standard",
         capture_mode:
-          payload.scope_type === "entity" ? "single" : payload.capture_mode,
+          payload.scope_type === "entity" || payload.scope_type === "person"
+            ? "single"
+            : payload.capture_mode,
         shifts:
-          payload.scope_type === "entity" || payload.capture_mode === "single"
+          payload.scope_type === "entity" ||
+          payload.scope_type === "person" ||
+          payload.capture_mode === "single"
             ? []
             : payload.shifts || [],
       }),
@@ -153,91 +163,95 @@ const API = {
   savePeriodMatrix: ({ indicator_id, rows }) =>
     API.saveMonthMatrix({ indicator_id, rows }),
 
-  // -------------------------
-  // ENTIDADES
-  // -------------------------
-  getEntities: ({ active_only, entity_type } = {}) => {
+  getPersons: ({ active_only } = {}) => {
     const q = buildQuery({
       active_only: active_only ? "true" : undefined,
-      entity_type,
     });
-    return request(`/entities${q ? `?${q}` : ""}`);
+    return request(`/persons${q ? `?${q}` : ""}`);
   },
 
-  createEntity: (payload) =>
-    request("/entities", {
+  createPerson: (payload) =>
+    request("/persons", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        code: payload.code || "",
+        full_name: payload.full_name || payload.name || "",
+        is_active: payload.is_active ?? true,
+      }),
     }),
 
-  updateEntity: (id, payload) =>
-    request(`/entities/${id}`, {
+  updatePerson: (id, payload) =>
+    request(`/persons/${id}`, {
       method: "PUT",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        code: payload.code || "",
+        full_name: payload.full_name || payload.name || "",
+        is_active: payload.is_active ?? true,
+      }),
     }),
 
-  deleteEntity: (id) =>
-    request(`/entities/${id}`, {
+  deletePerson: (id) =>
+    request(`/persons/${id}`, {
       method: "DELETE",
     }),
 
-  // -------------------------
-  // METAS POR ENTIDAD
-  // -------------------------
-  getEntityTargets: ({ indicator_id, entity_id, active_only } = {}) => {
+  getPersonTargets: ({ indicator_id, person_id, active_only } = {}) => {
     const q = buildQuery({
       indicator_id,
-      entity_id,
+      person_id,
       active_only: active_only ? "true" : undefined,
     });
-    return request(`/entity-indicator-targets${q ? `?${q}` : ""}`);
+    return request(`/person-indicator-targets${q ? `?${q}` : ""}`);
   },
 
-  createOrUpdateEntityTarget: (payload) =>
-    request("/entity-indicator-targets", {
+  createOrUpdatePersonTarget: (payload) =>
+    request("/person-indicator-targets", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        indicator_id: payload.indicator_id,
+        person_id: payload.person_id ?? payload.entity_id,
+        target_value: payload.target_value,
+        is_active: payload.is_active ?? true,
+      }),
     }),
 
-  deleteEntityTarget: (id) =>
-    request(`/entity-indicator-targets/${id}`, {
+  deletePersonTarget: (id) =>
+    request(`/person-indicator-targets/${id}`, {
       method: "DELETE",
     }),
 
-  // -------------------------
-  // CAPTURA POR ENTIDAD
-  // -------------------------
-  getEntityCaptureGrid: ({ indicator_id, record_date }) => {
+  getPersonCaptureGrid: ({ indicator_id, record_date }) => {
     const q = buildQuery({
       indicator_id,
       record_date,
     });
-    return request(`/entity-records/grid?${q}`);
+    return request(`/person-records/grid?${q}`);
   },
 
-  saveEntityGrid: ({ indicator_id, record_date, rows }) =>
-    request("/entity-records/bulk", {
+  savePersonGrid: ({ indicator_id, record_date, rows }) =>
+    request("/person-records/bulk", {
       method: "POST",
       body: JSON.stringify({
         indicator_id,
         record_date,
-        rows,
+        rows: (rows || []).map((row) => ({
+          person_id: row.person_id ?? row.entity_id,
+          value: row.value,
+          observation: row.observation,
+        })),
       }),
     }),
 
-  getEntityRecords: ({ indicator_id, entity_id, year, month } = {}) => {
+  getPersonRecords: ({ indicator_id, person_id, year, month } = {}) => {
     const q = buildQuery({
       indicator_id,
-      entity_id,
+      person_id,
       year,
       month,
     });
-    return request(`/entity-records${q ? `?${q}` : ""}`);
+    return request(`/person-records${q ? `?${q}` : ""}`);
   },
 
-  // -------------------------
-  // HISTÓRICO
-  // -------------------------
   getHistory: ({ year, month, day, level, process_id, indicator_id }) => {
     const q = buildQuery({
       year,
@@ -269,51 +283,6 @@ const API = {
     return request(`/history/summary${q ? `?${q}` : ""}`);
   },
 
-  getEntityHistory: ({
-    year,
-    month,
-    day,
-    level,
-    process_id,
-    indicator_id,
-    entity_id,
-  }) => {
-    const q = buildQuery({
-      year,
-      month,
-      day,
-      level,
-      process_id,
-      indicator_id,
-      entity_id,
-    });
-    return request(`/history/entity${q ? `?${q}` : ""}`);
-  },
-
-  getEntityHistorySummary: ({
-    year,
-    month,
-    day,
-    level,
-    process_id,
-    indicator_id,
-    entity_id,
-  }) => {
-    const q = buildQuery({
-      year,
-      month,
-      day,
-      level,
-      process_id,
-      indicator_id,
-      entity_id,
-    });
-    return request(`/history/entity/summary${q ? `?${q}` : ""}`);
-  },
-
-  // -------------------------
-  // DASHBOARD
-  // -------------------------
   getDashboardOverview: ({ year, month, day, level }) => {
     const q = buildQuery({
       year,
@@ -345,14 +314,79 @@ const API = {
     return request(`/dashboard/process?${q}`);
   },
 
-  getEntityDashboard: ({ indicator_id, year, month }) => {
+  getPersonDashboard: ({ indicator_id, year, month }) => {
     const q = buildQuery({
       indicator_id,
       year,
       month,
     });
-    return request(`/dashboard/entity?${q}`);
+    return request(`/dashboard/person?${q}`);
   },
+
+  // Compatibilidad temporal para no romper frontend nuevo
+  getEntities: ({ active_only } = {}) => API.getPersons({ active_only }),
+
+  createEntity: (payload) =>
+    API.createPerson({
+      code: payload.code,
+      full_name: payload.name || payload.full_name,
+      is_active: payload.is_active,
+    }),
+
+  updateEntity: (id, payload) =>
+    API.updatePerson(id, {
+      code: payload.code,
+      full_name: payload.name || payload.full_name,
+      is_active: payload.is_active,
+    }),
+
+  deleteEntity: (id) => API.deletePerson(id),
+
+  getEntityTargets: ({ indicator_id, entity_id, active_only } = {}) =>
+    API.getPersonTargets({
+      indicator_id,
+      person_id: entity_id,
+      active_only,
+    }),
+
+  createOrUpdateEntityTarget: (payload) =>
+    API.createOrUpdatePersonTarget({
+      indicator_id: payload.indicator_id,
+      person_id: payload.entity_id ?? payload.person_id,
+      target_value: payload.target_value,
+      is_active: payload.is_active,
+    }),
+
+  deleteEntityTarget: (id) => API.deletePersonTarget(id),
+
+  getEntityCaptureGrid: ({ indicator_id, record_date }) =>
+    API.getPersonCaptureGrid({ indicator_id, record_date }),
+
+  saveEntityGrid: ({ indicator_id, record_date, rows }) =>
+    API.savePersonGrid({
+      indicator_id,
+      record_date,
+      rows: (rows || []).map((row) => ({
+        person_id: row.entity_id ?? row.person_id,
+        value: row.value,
+        observation: row.observation,
+      })),
+    }),
+
+  getEntityRecords: ({ indicator_id, entity_id, year, month } = {}) =>
+    API.getPersonRecords({
+      indicator_id,
+      person_id: entity_id,
+      year,
+      month,
+    }),
+
+  getEntityDashboard: ({ indicator_id, year, month }) =>
+    API.getPersonDashboard({
+      indicator_id,
+      year,
+      month,
+    }),
 };
 
 export default API;
