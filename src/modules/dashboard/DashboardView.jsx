@@ -16,6 +16,8 @@ import {
   LabelList,
   ScatterChart,
   Scatter,
+  ReferenceLine,
+  ReferenceArea,
 } from "recharts";
 import API from "../../api";
 import {
@@ -40,6 +42,10 @@ const CHART_COLORS = {
   warning: "#f4c430",
   critical: "#e24b4b",
   observation: "#6d4cff",
+  target: "#1c4b8f",
+  targetSoft: "rgba(28, 75, 143, 0.10)",
+  warningArea: "rgba(244, 196, 48, 0.16)",
+  criticalArea: "rgba(226, 75, 75, 0.14)",
 };
 
 const PIE_COLORS = ["#133a6b", "#2459c3", "#6f97de"];
@@ -116,85 +122,13 @@ function ObservationScatterShape(props) {
   );
 }
 
-function CustomDailyTooltip({ active, payload, label, valueAxisLabel }) {
-  if (!active || !payload?.length) return null;
+function normalizeGeneralToPercent(value) {
+  const numeric = Number(value || 0);
 
-  const row =
-    payload.find((item) => item?.payload)?.payload ||
-    payload[0]?.payload ||
-    {};
-
-  return (
-    <div
-      style={{
-        background: "#ffffff",
-        border: "1px solid #d7e3f1",
-        borderRadius: 12,
-        padding: "10px 12px",
-        boxShadow: "0 12px 30px rgba(23,50,77,0.12)",
-        minWidth: 240,
-      }}
-    >
-      <div
-        style={{
-          fontWeight: 800,
-          color: CHART_COLORS.text,
-          marginBottom: 6,
-        }}
-      >
-        {row.date || label}
-      </div>
-
-      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 4 }}>
-        <strong>Valor:</strong> {formatPlainNumber(Number(row.value || 0))}{" "}
-        {valueAxisLabel}
-      </div>
-
-      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 4 }}>
-        <strong>General:</strong> {formatPercent(Number(row.general || 0))}
-      </div>
-
-      <div style={{ color: CHART_COLORS.text, fontSize: 13 }}>
-        <strong>Estado:</strong> {String(row.status || "ok").toUpperCase()}
-      </div>
-
-      {row.observation ? (
-        <div
-          style={{
-            color: CHART_COLORS.text,
-            fontSize: 13,
-            marginTop: 8,
-            paddingTop: 8,
-            borderTop: "1px solid #e6eef8",
-          }}
-        >
-          <strong>Obs.:</strong> {row.observation}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function DailyValueTopLabel(props) {
-  const { x, y, width, payload } = props;
-  if (!payload) return null;
-
-  const value = Number(payload.value || 0);
-  const text = formatPlainNumber(value);
-  const safeWidth = Number(width || 0);
-
-  return (
-    <text
-      x={x + safeWidth / 2}
-      y={y - 6}
-      textAnchor="middle"
-      fill={CHART_COLORS.text}
-      fontSize={11}
-      fontWeight={800}
-    >
-      {text}
-    </text>
-  );
+  if (!Number.isFinite(numeric)) return 0;
+  if (numeric <= 1) return numeric * 100;
+  if (numeric > 100) return 100;
+  return numeric;
 }
 
 function getMeasuredValueFromHistoryRow(row) {
@@ -247,6 +181,180 @@ function getBarColorByStatus(status) {
   if (normalized === "critical") return CHART_COLORS.critical;
   if (normalized === "warning") return CHART_COLORS.warning;
   return CHART_COLORS.ok;
+}
+
+function formatChartNumber(value) {
+  const numeric = Number(value || 0);
+
+  if (!Number.isFinite(numeric)) return "0";
+  if (Number.isInteger(numeric)) return `${numeric}`;
+  if (Math.abs(numeric) >= 100) return numeric.toFixed(1);
+  if (Math.abs(numeric) >= 10) return numeric.toFixed(2);
+  return numeric.toFixed(2);
+}
+
+function getSafeNumericValue(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function getIndicatorTargetLineValue(indicator) {
+  if (!indicator) return null;
+  return getSafeNumericValue(indicator.target_value);
+}
+
+function getRuleDirection(operator) {
+  const op = String(operator || "").trim();
+
+  if (op === "<" || op === "<=") return "down";
+  if (op === ">" || op === ">=") return "up";
+  return "equal";
+}
+
+function clampBetween(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function createBandSegment({ key, from, to, color, priority }) {
+  const y1 = Number(from);
+  const y2 = Number(to);
+
+  if (!Number.isFinite(y1) || !Number.isFinite(y2)) return null;
+  if (y1 === y2) return null;
+
+  return {
+    key,
+    y1: Math.min(y1, y2),
+    y2: Math.max(y1, y2),
+    color,
+    priority,
+  };
+}
+
+function resolveChartDomainMax(processDailySeries, selectedDashboardIndicator) {
+  const seriesMax = (Array.isArray(processDailySeries) ? processDailySeries : [])
+    .map((item) => Number(item?.value || 0))
+    .filter((value) => Number.isFinite(value));
+
+  const ruleValues = [
+    selectedDashboardIndicator?.target_value,
+    selectedDashboardIndicator?.warning_value,
+    selectedDashboardIndicator?.critical_value,
+  ]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+
+  const rawMax = Math.max(0, ...seriesMax, ...ruleValues);
+
+  if (rawMax <= 0) return 10;
+  if (rawMax <= 10) return Math.ceil(rawMax + 2);
+  if (rawMax <= 100) return Math.ceil(rawMax * 1.12);
+  return Math.ceil(rawMax * 1.1);
+}
+
+function buildIndicatorBackgroundBands(indicator, yDomainMax) {
+  if (!indicator || !Number.isFinite(Number(yDomainMax)) || Number(yDomainMax) <= 0) {
+    return [];
+  }
+
+  const max = Number(yDomainMax);
+  const min = 0;
+
+  const criticalValue = getSafeNumericValue(indicator.critical_value);
+  const criticalDirection = getRuleDirection(indicator.critical_operator);
+
+  const warningValue = getSafeNumericValue(indicator.warning_value);
+  const warningDirection = getRuleDirection(indicator.warning_operator);
+
+  const segments = [];
+
+  if (criticalValue !== null && criticalDirection !== "equal") {
+    if (criticalDirection === "down") {
+      segments.push(
+        createBandSegment({
+          key: "critical-down",
+          from: min,
+          to: clampBetween(criticalValue, min, max),
+          color: CHART_COLORS.criticalArea,
+          priority: 1,
+        })
+      );
+    }
+
+    if (criticalDirection === "up") {
+      segments.push(
+        createBandSegment({
+          key: "critical-up",
+          from: clampBetween(criticalValue, min, max),
+          to: max,
+          color: CHART_COLORS.criticalArea,
+          priority: 1,
+        })
+      );
+    }
+  }
+
+  if (warningValue !== null && warningDirection !== "equal") {
+    if (warningDirection === "down") {
+      const lowerBound =
+        criticalDirection === "down" && criticalValue !== null
+          ? clampBetween(criticalValue, min, max)
+          : min;
+
+      const upperBound = clampBetween(warningValue, min, max);
+
+      if (upperBound > lowerBound) {
+        segments.push(
+          createBandSegment({
+            key: "warning-down",
+            from: lowerBound,
+            to: upperBound,
+            color: CHART_COLORS.warningArea,
+            priority: 2,
+          })
+        );
+      }
+    }
+
+    if (warningDirection === "up") {
+      const upperCriticalStart =
+        criticalDirection === "up" && criticalValue !== null
+          ? clampBetween(criticalValue, min, max)
+          : max;
+
+      const warningStart = clampBetween(warningValue, min, max);
+
+      if (upperCriticalStart > warningStart) {
+        segments.push(
+          createBandSegment({
+            key: "warning-up",
+            from: warningStart,
+            to: upperCriticalStart,
+            color: CHART_COLORS.warningArea,
+            priority: 2,
+          })
+        );
+      } else if (
+        criticalDirection !== "up" ||
+        criticalValue === null ||
+        warningStart < max
+      ) {
+        segments.push(
+          createBandSegment({
+            key: "warning-up-full",
+            from: warningStart,
+            to: max,
+            color: CHART_COLORS.warningArea,
+            priority: 2,
+          })
+        );
+      }
+    }
+  }
+
+  return segments
+    .filter(Boolean)
+    .sort((a, b) => a.priority - b.priority);
 }
 
 function getDaysInMonth(year, month) {
@@ -368,7 +476,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
     const recordDate = String(item.record_date || "").slice(0, 10);
     const day = Number(recordDate.slice(8, 10)) || index + 1;
     const realValue = Number(getMeasuredValueFromHistoryRow(item) || 0);
-    const general = Number(item.general || 0);
+    const general = normalizeGeneralToPercent(item.general || 0);
     const status = normalizeStatus(item.status);
     const observation = String(item.observation || "").trim();
 
@@ -428,22 +536,224 @@ function getSummaryValue(summary, keys, fallback = 0) {
   return fallback;
 }
 
+function TrendLegend({
+  selectedDashboardIndicator,
+  observationsCount,
+  processValueAxisLabel,
+  compact = false,
+  processName,
+  weekRangeLabel,
+  showRange = false,
+}) {
+  const targetValue = getIndicatorTargetLineValue(selectedDashboardIndicator);
+
+  return (
+    <div
+      style={{
+        marginTop: compact ? 10 : 0,
+        display: "flex",
+        gap: compact ? 14 : 18,
+        flexWrap: "wrap",
+        alignItems: "center",
+        fontSize: compact ? 12 : 13,
+        color: CHART_COLORS.text,
+      }}
+    >
+      {processName ? (
+        <span>
+          <strong>Proceso:</strong> {processName}
+        </span>
+      ) : null}
+
+      <span>
+        <strong>Unidad:</strong> {processValueAxisLabel}
+      </span>
+
+      <span>
+        <strong>Barras:</strong> valor real por día
+      </span>
+
+      <span>
+        <strong>Línea:</strong> % cumplimiento
+      </span>
+
+      <span>
+        <strong>Línea punteada/meta:</strong>{" "}
+        {targetValue !== null
+          ? `meta objetivo (${formatPlainNumber(targetValue)} ${processValueAxisLabel})`
+          : "sin meta configurada"}
+      </span>
+
+      <span>
+        <strong>Fondo amarillo:</strong> warning
+      </span>
+
+      <span>
+        <strong>Fondo rojo:</strong> critical
+      </span>
+
+      <span>
+        <strong>* / !</strong> observación
+      </span>
+
+      <span>
+        <strong>Total observaciones:</strong> {observationsCount}
+      </span>
+
+      {showRange && weekRangeLabel ? (
+        <span>
+          <strong>Rango:</strong> {weekRangeLabel}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function CustomDailyTooltip({
+  active,
+  payload,
+  label,
+  valueAxisLabel,
+  selectedDashboardIndicator,
+}) {
+  if (!active || !payload?.length) return null;
+
+  const row =
+    payload.find((item) => item?.payload)?.payload ||
+    payload[0]?.payload ||
+    {};
+
+  const targetValue = getIndicatorTargetLineValue(selectedDashboardIndicator);
+  const warningRule = formatRule(
+    selectedDashboardIndicator?.warning_operator,
+    selectedDashboardIndicator?.warning_value,
+    selectedDashboardIndicator?.unit || valueAxisLabel
+  );
+  const criticalRule = formatRule(
+    selectedDashboardIndicator?.critical_operator,
+    selectedDashboardIndicator?.critical_value,
+    selectedDashboardIndicator?.unit || valueAxisLabel
+  );
+
+  return (
+    <div
+      style={{
+        background: "#ffffff",
+        border: "1px solid #d7e3f1",
+        borderRadius: 14,
+        padding: "12px 14px",
+        boxShadow: "0 12px 30px rgba(23,50,77,0.12)",
+        minWidth: 270,
+      }}
+    >
+      <div
+        style={{
+          fontWeight: 800,
+          color: CHART_COLORS.text,
+          marginBottom: 8,
+        }}
+      >
+        {row.date || label}
+      </div>
+
+      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 5 }}>
+        <strong>Valor:</strong> {formatPlainNumber(Number(row.value || 0))}{" "}
+        {valueAxisLabel}
+      </div>
+
+      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 5 }}>
+        <strong>Cumplimiento:</strong>{" "}
+        {formatPercent(Number(row.general || 0))}
+      </div>
+
+      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 5 }}>
+        <strong>Estado:</strong> {String(row.status || "ok").toUpperCase()}
+      </div>
+
+      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 5 }}>
+        <strong>Meta:</strong>{" "}
+        {targetValue !== null
+          ? `${formatPlainNumber(targetValue)} ${valueAxisLabel}`
+          : "No definida"}
+      </div>
+
+      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 5 }}>
+        <strong>Warning:</strong>{" "}
+        {warningRule || "No definido"}
+      </div>
+
+      <div style={{ color: CHART_COLORS.text, fontSize: 13 }}>
+        <strong>Critical:</strong>{" "}
+        {criticalRule || "No definido"}
+      </div>
+
+      {row.observation ? (
+        <div
+          style={{
+            color: CHART_COLORS.text,
+            fontSize: 13,
+            marginTop: 10,
+            paddingTop: 8,
+            borderTop: "1px solid #e6eef8",
+          }}
+        >
+          <strong>Obs.:</strong> {row.observation}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DailyValueTopLabel(props) {
+  const { x, y, width, payload } = props;
+  if (!payload) return null;
+
+  const value = Number(payload.value || 0);
+  const text = formatPlainNumber(value);
+  const safeWidth = Number(width || 0);
+
+  return (
+    <text
+      x={x + safeWidth / 2}
+      y={y - 6}
+      textAnchor="middle"
+      fill={CHART_COLORS.text}
+      fontSize={11}
+      fontWeight={800}
+    >
+      {text}
+    </text>
+  );
+}
+
 function renderTrendChart({
   isStandardIndicatorSelected,
   processDailySeries,
   dashboardData,
   processValueAxisLabel,
+  selectedDashboardIndicator,
   expanded = false,
 }) {
   if (isStandardIndicatorSelected) {
+    const yDomainMax = resolveChartDomainMax(
+      processDailySeries,
+      selectedDashboardIndicator
+    );
+    const backgroundBands = buildIndicatorBackgroundBands(
+      selectedDashboardIndicator,
+      yDomainMax
+    );
+    const targetLineValue =
+      getIndicatorTargetLineValue(selectedDashboardIndicator);
+
     return (
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
           data={processDailySeries}
           margin={
             expanded
-              ? { top: 34, right: 24, left: 10, bottom: 70 }
-              : { top: 24, right: 18, left: 8, bottom: 56 }
+              ? { top: 38, right: 26, left: 12, bottom: 78 }
+              : { top: 28, right: 20, left: 8, bottom: 60 }
           }
         >
           <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
@@ -470,10 +780,10 @@ function renderTrendChart({
           />
 
           <YAxis
+            yAxisId="left"
+            domain={[0, yDomainMax]}
             tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
-            tickFormatter={(value) =>
-              Number.isInteger(value) ? `${value}` : Number(value).toFixed(2)
-            }
+            tickFormatter={(value) => formatChartNumber(value)}
             label={
               expanded
                 ? {
@@ -488,13 +798,66 @@ function renderTrendChart({
             }
           />
 
+          <YAxis
+            yAxisId="right"
+            orientation="right"
+            domain={[0, 100]}
+            tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
+            tickFormatter={(value) => `${Number(value)}%`}
+            label={
+              expanded
+                ? {
+                    value: "% Cumplimiento",
+                    angle: 90,
+                    position: "insideRight",
+                    fill: CHART_COLORS.text,
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }
+                : undefined
+            }
+          />
+
+          {backgroundBands.map((band) => (
+            <ReferenceArea
+              key={band.key}
+              yAxisId="left"
+              y1={band.y1}
+              y2={band.y2}
+              fill={band.color}
+              ifOverflow="extendDomain"
+            />
+          ))}
+
+          {targetLineValue !== null ? (
+            <ReferenceLine
+              yAxisId="left"
+              y={targetLineValue}
+              stroke={CHART_COLORS.target}
+              strokeWidth={2}
+              strokeDasharray="8 6"
+              ifOverflow="extendDomain"
+              label={{
+                value: `Meta: ${formatPlainNumber(targetLineValue)} ${processValueAxisLabel}`,
+                position: "insideTopRight",
+                fill: CHART_COLORS.target,
+                fontSize: expanded ? 12 : 11,
+                fontWeight: 800,
+              }}
+            />
+          ) : null}
+
           <Tooltip
             content={
-              <CustomDailyTooltip valueAxisLabel={processValueAxisLabel} />
+              <CustomDailyTooltip
+                valueAxisLabel={processValueAxisLabel}
+                selectedDashboardIndicator={selectedDashboardIndicator}
+              />
             }
           />
 
           <Bar
+            yAxisId="left"
             dataKey="value"
             name={processValueAxisLabel}
             radius={[8, 8, 0, 0]}
@@ -508,9 +871,10 @@ function renderTrendChart({
           </Bar>
 
           <Line
+            yAxisId="right"
             type="monotone"
-            dataKey="trendValue"
-            name="Tendencia"
+            dataKey="general"
+            name="% cumplimiento"
             stroke={CHART_COLORS.navy}
             strokeWidth={3}
             dot={{ r: expanded ? 4 : 3, fill: CHART_COLORS.navy }}
@@ -518,6 +882,7 @@ function renderTrendChart({
           />
 
           <Scatter
+            yAxisId="left"
             data={processDailySeries.filter((item) => item.hasObservation)}
             dataKey="observationMarkerY"
             shape={<ObservationScatterShape />}
@@ -787,7 +1152,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
           shortLabel: formatShortDate(item.label),
           value: numericValue,
           trendValue: numericValue,
-          general: Number(item.value || 0),
+          general: normalizeGeneralToPercent(item.value || 0),
           status: "ok",
           fill: CHART_COLORS.ok,
           observation: "",
@@ -1459,43 +1824,18 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       processDailySeries,
                       dashboardData,
                       processValueAxisLabel,
+                      selectedDashboardIndicator,
                       expanded: false,
                     })}
                   </div>
 
                   {isStandardIndicatorSelected && !!processDailySeries.length && (
-                    <div
-                      style={{
-                        marginTop: 10,
-                        display: "flex",
-                        gap: 16,
-                        flexWrap: "wrap",
-                        fontSize: 12,
-                        color: CHART_COLORS.text,
-                      }}
-                    >
-                      <span>
-                        <strong>Barras:</strong> valor real por día
-                      </span>
-                      <span>
-                        <strong>Línea:</strong> tendencia del valor
-                      </span>
-                      <span>
-                        <strong>Azul:</strong> OK
-                      </span>
-                      <span>
-                        <strong>Amarillo:</strong> Warning
-                      </span>
-                      <span>
-                        <strong>Rojo:</strong> Critical
-                      </span>
-                      <span>
-                        <strong>* / !</strong> registro con observación
-                      </span>
-                      <span>
-                        <strong>Observaciones:</strong> {observationsCount}
-                      </span>
-                    </div>
+                    <TrendLegend
+                      selectedDashboardIndicator={selectedDashboardIndicator}
+                      observationsCount={observationsCount}
+                      processValueAxisLabel={processValueAxisLabel}
+                      compact
+                    />
                   )}
                 </section>
 
@@ -1874,49 +2214,17 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                 </button>
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 18,
-                  flexWrap: "wrap",
-                  fontSize: 13,
-                  color: CHART_COLORS.text,
-                }}
-              >
-                <span>
-                  <strong>Proceso:</strong> {dashboardData?.process?.name}
-                </span>
-                <span>
-                  <strong>Unidad:</strong> {processValueAxisLabel}
-                </span>
-                <span>
-                  <strong>Barras:</strong> valor por día
-                </span>
-                <span>
-                  <strong>Línea:</strong> tendencia del valor
-                </span>
-                <span>
-                  <strong>Azul:</strong> OK
-                </span>
-                <span>
-                  <strong>Amarillo:</strong> Warning
-                </span>
-                <span>
-                  <strong>Rojo:</strong> Critical
-                </span>
-                <span>
-                  <strong>* / !</strong> con observación
-                </span>
-                <span>
-                  <strong>Total observaciones:</strong> {observationsCount}
-                </span>
-                {dashboardFilter.period === "week" &&
-                  dashboardFilter.week_segment && (
-                    <span>
-                      <strong>Rango:</strong> {weekRangeLabel}
-                    </span>
-                  )}
-              </div>
+              <TrendLegend
+                selectedDashboardIndicator={selectedDashboardIndicator}
+                observationsCount={observationsCount}
+                processValueAxisLabel={processValueAxisLabel}
+                processName={dashboardData?.process?.name}
+                weekRangeLabel={weekRangeLabel}
+                showRange={
+                  dashboardFilter.period === "week" &&
+                  !!dashboardFilter.week_segment
+                }
+              />
 
               <div style={{ flex: 1, minHeight: 0 }}>
                 {renderTrendChart({
@@ -1924,6 +2232,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   processDailySeries,
                   dashboardData,
                   processValueAxisLabel,
+                  selectedDashboardIndicator,
                   expanded: true,
                 })}
               </div>
