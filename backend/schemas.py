@@ -27,11 +27,11 @@ class IndicatorCreate(BaseModel):
     target_operator: str
     target_value: float
 
-    warning_operator: str
-    warning_value: float
+    warning_operator: Optional[str] = None
+    warning_value: Optional[float] = None
 
-    critical_operator: str
-    critical_value: float
+    critical_operator: Optional[str] = None
+    critical_value: Optional[float] = None
 
     frequency: str
     capture_mode: str
@@ -53,11 +53,11 @@ class IndicatorOut(BaseModel):
     target_operator: str
     target_value: float
 
-    warning_operator: str
-    warning_value: float
+    warning_operator: Optional[str] = None
+    warning_value: Optional[float] = None
 
-    critical_operator: str
-    critical_value: float
+    critical_operator: Optional[str] = None
+    critical_value: Optional[float] = None
 
     frequency: str
     capture_mode: str
@@ -179,7 +179,7 @@ class EntityIndicatorTargetOut(BaseModel):
 
 class EntityRecordRowSave(BaseModel):
     entity_id: int
-    value: Optional[float] = 0
+    value: Optional[float] = None
     observation: Optional[str] = None
 
 

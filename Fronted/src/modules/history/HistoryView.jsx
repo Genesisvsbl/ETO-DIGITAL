@@ -53,7 +53,7 @@ function buildEntityHistorySummary(records) {
 
   const total_records = records.length;
   const average_general =
-    records.reduce((acc, item) => acc + Number(item.general || 0), 0) /
+    records.reduce((acc, item) => acc + Number(item.general ?? 0), 0) /
     total_records;
 
   const ok_count = records.filter((x) => x.status === "ok").length;
@@ -78,7 +78,7 @@ function buildEntityHistorySummary(records) {
     }
 
     processMap[name].total_records += 1;
-    processMap[name]._sum += Number(item.general || 0);
+    processMap[name]._sum += Number(item.general ?? 0);
 
     if (item.status === "ok") processMap[name].ok_count += 1;
     else if (item.status === "warning") processMap[name].warning_count += 1;
@@ -108,7 +108,7 @@ function buildEntityHistorySummary(records) {
   };
 }
 
-export default function HistoryView({ accessLevel, processes, indicators }) {
+export default function HistoryView({ accessLevel, processes, indicators, entities = [] }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [historyResults, setHistoryResults] = useState([]);
@@ -119,6 +119,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
 
   const [entityMatrixMeta, setEntityMatrixMeta] = useState(null);
   const [entityMatrixRows, setEntityMatrixRows] = useState([]);
+  const [entityQuickFilter, setEntityQuickFilter] = useState("");
 
   const [historyFilter, setHistoryFilter] = useState({
     year: new Date().getFullYear(),
@@ -127,6 +128,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
     level: "",
     process_id: "",
     indicator_id: "",
+    entity_id: "",
   });
 
   const selectedHistoryIndicator = useMemo(() => {
@@ -153,6 +155,22 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
     );
   }, [historyFilter.process_id, indicators]);
 
+  const filteredEntityMatrixRows = useMemo(() => {
+    const query = String(entityQuickFilter || "").trim().toLowerCase();
+    if (!query) return entityMatrixRows;
+
+    return entityMatrixRows.filter((row) => {
+      const name = String(row.entity_name || "").toLowerCase();
+      const code = String(row.entity_code || "").toLowerCase();
+      const type = String(row.entity_type || "").toLowerCase();
+      return (
+        name.includes(query) ||
+        code.includes(query) ||
+        type.includes(query)
+      );
+    });
+  }, [entityMatrixRows, entityQuickFilter]);
+
   async function runHistorySearch(customFilters = null) {
     try {
       setLoading(true);
@@ -172,6 +190,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
         const [entityRecords, entityTargets] = await Promise.all([
           API.getEntityRecords({
             indicator_id: indicatorId,
+            entity_id: filters.entity_id ? Number(filters.entity_id) : undefined,
             year: filters.year ? Number(filters.year) : undefined,
             month: filters.month ? Number(filters.month) : undefined,
           }),
@@ -184,7 +203,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
         const targetMap = new Map(
           (entityTargets || []).map((targetItem) => [
             Number(targetItem.entity_id),
-            Number(targetItem.target_value || 0),
+            Number(targetItem.target_value ?? 0),
           ])
         );
 
@@ -199,20 +218,73 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
           })
           .map((item) => {
             const entityId = Number(item.entity_id);
-            const target = Number(targetMap.get(entityId) || 0);
-            const value = Number(item.value || 0);
+            const target = Number(targetMap.get(entityId) ?? 0);
+            const value = Number(item.value ?? 0);
 
             let general = 0;
 
-            if (target > 0) {
-              general = Math.min((value / target) * 100, 100);
+            if (selectedIndicator.target_operator === "=") {
+              if (target === 0) {
+                general = value === 0 ? 100 : 0;
+              } else {
+                const diffRatio = Math.abs(value - target) / Math.abs(target);
+                general = Math.max(0, Math.min(100, 100 - diffRatio * 100));
+              }
+            } else if (
+              selectedIndicator.target_operator === ">" ||
+              selectedIndicator.target_operator === ">="
+            ) {
+              if (target === 0) {
+                general = value >= 0 ? 100 : 0;
+              } else {
+                general = Math.max(0, Math.min(100, (value / target) * 100));
+              }
             } else {
-              general = 0;
+              if (value <= target) {
+                general = 100;
+              } else if (target === 0) {
+                general = 0;
+              } else {
+                general = Math.max(0, Math.min(100, (target / value) * 100));
+              }
             }
 
-            let status = "critical";
-            if (general >= 100) status = "ok";
-            else if (general > 0) status = "warning";
+            let status = "ok";
+
+            if (
+              selectedIndicator.critical_operator &&
+              selectedIndicator.critical_value !== null &&
+              selectedIndicator.critical_value !== undefined
+            ) {
+              const criticalValue = Number(selectedIndicator.critical_value);
+              if (
+                (selectedIndicator.critical_operator === ">" && general > criticalValue) ||
+                (selectedIndicator.critical_operator === ">=" && general >= criticalValue) ||
+                (selectedIndicator.critical_operator === "<" && general < criticalValue) ||
+                (selectedIndicator.critical_operator === "<=" && general <= criticalValue) ||
+                (selectedIndicator.critical_operator === "=" && general === criticalValue)
+              ) {
+                status = "critical";
+              }
+            }
+
+            if (
+              status === "ok" &&
+              selectedIndicator.warning_operator &&
+              selectedIndicator.warning_value !== null &&
+              selectedIndicator.warning_value !== undefined
+            ) {
+              const warningValue = Number(selectedIndicator.warning_value);
+              if (
+                (selectedIndicator.warning_operator === ">" && general > warningValue) ||
+                (selectedIndicator.warning_operator === ">=" && general >= warningValue) ||
+                (selectedIndicator.warning_operator === "<" && general < warningValue) ||
+                (selectedIndicator.warning_operator === "<=" && general <= warningValue) ||
+                (selectedIndicator.warning_operator === "=" && general === warningValue)
+              ) {
+                status = "warning";
+              }
+            }
 
             return {
               id: `${item.entity_id}-${item.record_date}`,
@@ -329,10 +401,22 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
           ...row,
           __rowId: `month-${index}-${row.record_date}`,
           record_date: String(row.record_date).slice(0, 10),
-          single_value: row.single_value ?? "",
-          shift_a: row.shift_a ?? "",
-          shift_b: row.shift_b ?? "",
-          shift_c: row.shift_c ?? "",
+          single_value:
+            row.single_value === null || row.single_value === undefined
+              ? ""
+              : String(row.single_value),
+          shift_a:
+            row.shift_a === null || row.shift_a === undefined
+              ? ""
+              : String(row.shift_a),
+          shift_b:
+            row.shift_b === null || row.shift_b === undefined
+              ? ""
+              : String(row.shift_b),
+          shift_c:
+            row.shift_c === null || row.shift_c === undefined
+              ? ""
+              : String(row.shift_c),
           observation: row.observation || "",
         }))
       );
@@ -451,7 +535,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
             entity_code: target.entity_code || "",
             entity_name: target.entity_name || "",
             entity_type: target.entity_type || "",
-            target_value: Number(target.target_value || 0),
+            target_value: Number(target.target_value ?? 0),
             record_date: recordDate,
             day,
             value:
@@ -515,7 +599,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
           entity_id: entityId,
           value:
             row.value === "" || row.value === null || row.value === undefined
-              ? 0
+              ? null
               : Number(row.value),
           observation: row.observation || "",
         });
@@ -572,7 +656,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
           entity_type: row.entity_type || "",
           accumulated: 0,
           records: 0,
-          target_value: Number(row.target_value || 0),
+          target_value: Number(row.target_value ?? 0),
         };
       }
 
@@ -662,6 +746,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                   ...historyFilter,
                   process_id: e.target.value,
                   indicator_id: "",
+                  entity_id: "",
                 })
               }
             >
@@ -682,6 +767,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                 setHistoryFilter({
                   ...historyFilter,
                   indicator_id: e.target.value,
+                  entity_id: "",
                 })
               }
             >
@@ -694,6 +780,36 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
             </select>
           </div>
         </div>
+
+        {isEntityHistoryIndicator && (
+          <div
+            className="inline-form-grid"
+            style={{
+              gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 4fr)",
+              marginTop: 14,
+            }}
+          >
+            <div className="field">
+              <label>Entidad</label>
+              <select
+                value={historyFilter.entity_id}
+                onChange={(e) =>
+                  setHistoryFilter({
+                    ...historyFilter,
+                    entity_id: e.target.value,
+                  })
+                }
+              >
+                <option value="">Todas</option>
+                {entities.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} {item.code ? `(${item.code})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
 
         <div className="actions top-space">
           <button className="primary" disabled={loading}>
@@ -752,6 +868,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
               onClick={() => {
                 setEntityMatrixMeta(null);
                 setEntityMatrixRows([]);
+                setEntityQuickFilter("");
               }}
             >
               Cerrar entidades
@@ -937,6 +1054,23 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
             </div>
           </div>
 
+          <div
+            className="inline-form-grid"
+            style={{
+              gridTemplateColumns: "minmax(0, 1fr) minmax(0, 5fr)",
+              marginBottom: 14,
+            }}
+          >
+            <div className="field">
+              <label>Filtrar entidad</label>
+              <input
+                value={entityQuickFilter}
+                onChange={(e) => setEntityQuickFilter(e.target.value)}
+                placeholder="Buscar por nombre, código o tipo"
+              />
+            </div>
+          </div>
+
           <div className="table-wrap">
             <table>
               <thead>
@@ -950,7 +1084,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                 </tr>
               </thead>
               <tbody>
-                {entityMatrixRows.map((row, index) => (
+                {filteredEntityMatrixRows.map((row, index) => (
                   <tr key={getStableRowId(row, index)}>
                     <td>
                       <input value={row.entity_type || "-"} disabled />
@@ -970,7 +1104,13 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                         step="0.01"
                         value={row.value}
                         onChange={(e) =>
-                          updateEntityMatrix(index, "value", e.target.value)
+                          updateEntityMatrix(
+                            entityMatrixRows.findIndex(
+                              (item) => item.__rowId === row.__rowId
+                            ),
+                            "value",
+                            e.target.value
+                          )
                         }
                         placeholder="Valor"
                       />
@@ -979,7 +1119,13 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                       <input
                         value={row.observation}
                         onChange={(e) =>
-                          updateEntityMatrix(index, "observation", e.target.value)
+                          updateEntityMatrix(
+                            entityMatrixRows.findIndex(
+                              (item) => item.__rowId === row.__rowId
+                            ),
+                            "observation",
+                            e.target.value
+                          )
                         }
                         placeholder="Observación"
                       />
@@ -987,7 +1133,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                   </tr>
                 ))}
 
-                {!entityMatrixRows.length && (
+                {!filteredEntityMatrixRows.length && (
                   <tr>
                     <td colSpan="6" className="empty">
                       Sin filas para el período seleccionado
@@ -1018,7 +1164,7 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                     <td>{item.entity_type || "-"}</td>
                     <td>{item.entity}</td>
                     <td>{item.records}</td>
-                    <td>{formatPlainNumber(item.target_value || 0)}</td>
+                    <td>{formatPlainNumber(item.target_value ?? 0)}</td>
                     <td>{formatPlainNumber(item.accumulated)}</td>
                   </tr>
                 ))}
@@ -1136,17 +1282,17 @@ export default function HistoryView({ accessLevel, processes, indicators }) {
                     {item.scope_type === "entity"
                       ? formatPlainNumber(item.value ?? 0)
                       : item.capture_mode === "single"
-                      ? item.single_value ?? "-"
+                      ? item.single_value ?? 0
                       : "-"}
                   </td>
                   {!isEntityHistoryIndicator && (
-                    <td>{hasShift(item.shifts, "A") ? item.shift_a ?? "-" : "-"}</td>
+                    <td>{hasShift(item.shifts, "A") ? item.shift_a ?? 0 : "-"}</td>
                   )}
                   {!isEntityHistoryIndicator && (
-                    <td>{hasShift(item.shifts, "B") ? item.shift_b ?? "-" : "-"}</td>
+                    <td>{hasShift(item.shifts, "B") ? item.shift_b ?? 0 : "-"}</td>
                   )}
                   {!isEntityHistoryIndicator && (
-                    <td>{hasShift(item.shifts, "C") ? item.shift_c ?? "-" : "-"}</td>
+                    <td>{hasShift(item.shifts, "C") ? item.shift_c ?? 0 : "-"}</td>
                   )}
                   <td>
                     {item.scope_type === "entity"

@@ -333,6 +333,25 @@ def normalize_scope_type(value: Optional[str]) -> str:
     return mapping.get(clean, clean)
 
 
+def normalize_optional_operator(value: Optional[str]) -> Optional[str]:
+    clean = (value or "").strip()
+    return clean if clean else None
+
+
+def normalize_optional_number(value):
+    if value is None:
+        return None
+    return float(value)
+
+
+def is_blank_string(value) -> bool:
+    return value is None or (isinstance(value, str) and value.strip() == "")
+
+
+def has_explicit_value(value) -> bool:
+    return value is not None and not (isinstance(value, str) and value.strip() == "")
+
+
 def generate_indicator_code(db: Session):
     last = db.query(Indicator).order_by(Indicator.id.desc()).first()
     next_id = 1 if not last else last.id + 1
@@ -355,7 +374,10 @@ def sanitize_record_values_for_mode(capture_mode, single_value, shift_a, shift_b
     return None, shift_a, shift_b, shift_c
 
 
-def compare_value(value: float, operator: str, rule_value: float) -> bool:
+def compare_value(value: Optional[float], operator: Optional[str], rule_value: Optional[float]) -> bool:
+    if value is None or operator is None or rule_value is None:
+        return False
+
     if operator == ">":
         return value > rule_value
     if operator == ">=":
@@ -371,7 +393,7 @@ def compare_value(value: float, operator: str, rule_value: float) -> bool:
 
 def calculate_measured_value(indicator: Indicator, single_value, shift_a, shift_b, shift_c):
     if indicator.capture_mode == "single":
-        return round(float(single_value or 0), 2)
+        return round(float(single_value if single_value is not None else 0), 2)
 
     enabled = get_enabled_shifts(indicator)
     values = []
@@ -389,10 +411,7 @@ def calculate_measured_value(indicator: Indicator, single_value, shift_a, shift_
     return round(sum(values) / len(values), 2)
 
 
-def calculate_general(indicator: Indicator, measured_value: float):
-    target = float(indicator.target_value)
-    operator = indicator.target_operator
-
+def calculate_compliance_by_rule(operator: str, target: float, measured_value: float):
     if operator == "=":
         if target == 0:
             return 100.0 if measured_value == 0 else 0.0
@@ -402,31 +421,68 @@ def calculate_general(indicator: Indicator, measured_value: float):
 
     if operator in [">", ">="]:
         if target == 0:
-            return 100.0 if measured_value >= 0 else 0.0
+            return 100.0 if compare_value(measured_value, operator, target) else 0.0
         compliance = (measured_value / target) * 100.0
         return round(max(0.0, min(compliance, 100.0)), 2)
 
     if operator in ["<", "<="]:
-        if measured_value <= target:
+        if compare_value(measured_value, operator, target):
             return 100.0
         if target == 0:
             return 0.0
+        if measured_value == 0:
+            return 100.0
         compliance = (target / measured_value) * 100.0
         return round(max(0.0, min(compliance, 100.0)), 2)
 
     return 0.0
 
 
+def calculate_general(indicator: Indicator, measured_value: float):
+    target = float(indicator.target_value if indicator.target_value is not None else 0)
+    operator = indicator.target_operator
+    return calculate_compliance_by_rule(operator, target, measured_value)
+
+
 def calculate_status(indicator: Indicator, measured_value: float):
-    if compare_value(measured_value, indicator.critical_operator, indicator.critical_value):
+    if compare_value(
+        measured_value,
+        normalize_optional_operator(getattr(indicator, "critical_operator", None)),
+        normalize_optional_number(getattr(indicator, "critical_value", None)),
+    ):
         return "critical"
-    if compare_value(measured_value, indicator.warning_operator, indicator.warning_value):
+
+    if compare_value(
+        measured_value,
+        normalize_optional_operator(getattr(indicator, "warning_operator", None)),
+        normalize_optional_number(getattr(indicator, "warning_value", None)),
+    ):
         return "warning"
+
     return "ok"
 
 
 def calculate_entity_status(indicator: Indicator, compliance: float):
     return calculate_status(indicator, compliance)
+
+
+def validate_optional_rule(operator, rule_value, label: str):
+    operator = normalize_optional_operator(operator)
+    rule_value = normalize_optional_number(rule_value)
+
+    if operator is None and rule_value is None:
+        return None, None
+
+    if operator is None or rule_value is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Debes completar operador y valor para {label}"
+        )
+
+    if operator not in VALID_OPERATORS:
+        raise HTTPException(status_code=400, detail=f"Operador de {label} no válido")
+
+    return operator, rule_value
 
 
 def validate_indicator_payload(payload: IndicatorCreate):
@@ -440,12 +496,6 @@ def validate_indicator_payload(payload: IndicatorCreate):
     if payload.target_operator not in VALID_OPERATORS:
         raise HTTPException(status_code=400, detail="Operador de meta no válido")
 
-    if payload.warning_operator not in VALID_OPERATORS:
-        raise HTTPException(status_code=400, detail="Operador de warning no válido")
-
-    if payload.critical_operator not in VALID_OPERATORS:
-        raise HTTPException(status_code=400, detail="Operador de critical no válido")
-
     if payload.frequency not in VALID_FREQUENCIES:
         raise HTTPException(status_code=400, detail="Frecuencia no válida")
 
@@ -454,6 +504,22 @@ def validate_indicator_payload(payload: IndicatorCreate):
 
     if payload.scope_type not in VALID_SCOPE_TYPES:
         raise HTTPException(status_code=400, detail="Tipo de alcance no válido")
+
+    warning_operator, warning_value = validate_optional_rule(
+        getattr(payload, "warning_operator", None),
+        getattr(payload, "warning_value", None),
+        "warning",
+    )
+    critical_operator, critical_value = validate_optional_rule(
+        getattr(payload, "critical_operator", None),
+        getattr(payload, "critical_value", None),
+        "critical",
+    )
+
+    payload.warning_operator = warning_operator
+    payload.warning_value = warning_value
+    payload.critical_operator = critical_operator
+    payload.critical_value = critical_value
 
     if payload.scope_type == "entity":
         payload.capture_mode = "single"
@@ -525,6 +591,20 @@ def base_history_query(db: Session):
     )
 
 
+def base_entity_history_query(db: Session):
+    return (
+        db.query(EntityRecord)
+        .join(EntityRecord.indicator)
+        .join(Indicator.process)
+        .join(EntityRecord.entity)
+        .options(
+            joinedload(EntityRecord.indicator).joinedload(Indicator.process),
+            joinedload(EntityRecord.entity),
+        )
+        .filter(Indicator.scope_type == "entity")
+    )
+
+
 def apply_common_filters(
     query,
     year=None,
@@ -546,6 +626,33 @@ def apply_common_filters(
         query = query.filter(Indicator.process_id == process_id)
     if indicator_id:
         query = query.filter(DailyRecord.indicator_id == indicator_id)
+    return query
+
+
+def apply_entity_record_filters(
+    query,
+    year=None,
+    month=None,
+    day=None,
+    level=None,
+    process_id=None,
+    indicator_id=None,
+    entity_id=None,
+):
+    if year:
+        query = query.filter(extract("year", EntityRecord.record_date) == year)
+    if month:
+        query = query.filter(extract("month", EntityRecord.record_date) == month)
+    if day:
+        query = query.filter(extract("day", EntityRecord.record_date) == day)
+    if level:
+        query = query.filter(Indicator.meeting_level == level)
+    if process_id:
+        query = query.filter(Indicator.process_id == process_id)
+    if indicator_id:
+        query = query.filter(EntityRecord.indicator_id == indicator_id)
+    if entity_id:
+        query = query.filter(EntityRecord.entity_id == entity_id)
     return query
 
 
@@ -672,10 +779,10 @@ def build_indicator_out(indicator: Indicator):
         unit=indicator.unit,
         target_operator=indicator.target_operator,
         target_value=indicator.target_value,
-        warning_operator=indicator.warning_operator,
-        warning_value=indicator.warning_value,
-        critical_operator=indicator.critical_operator,
-        critical_value=indicator.critical_value,
+        warning_operator=normalize_optional_operator(indicator.warning_operator),
+        warning_value=normalize_optional_number(indicator.warning_value),
+        critical_operator=normalize_optional_operator(indicator.critical_operator),
+        critical_value=normalize_optional_number(indicator.critical_value),
         frequency=normalize_frequency(indicator.frequency),
         capture_mode=normalize_capture_mode(indicator.capture_mode),
         shifts="" if normalize_capture_mode(indicator.capture_mode) == "single" else (indicator.shifts or ""),
@@ -727,6 +834,98 @@ def build_entity_record_out(item: EntityRecord):
         value=item.value,
         observation=item.observation,
     )
+
+
+def build_entity_history_row(item: EntityRecord):
+    target_value = 0.0
+    target = (
+        item.indicator.entity_indicator_targets
+        if hasattr(item.indicator, "entity_indicator_targets")
+        else []
+    )
+
+    for current in target:
+        if current.entity_id == item.entity_id and current.is_active:
+            target_value = float(current.target_value or 0)
+            break
+
+    general = calculate_compliance_by_rule(
+        item.indicator.target_operator,
+        target_value,
+        float(item.value if item.value is not None else 0),
+    )
+    status = calculate_entity_status(item.indicator, general)
+
+    return {
+        "id": item.id,
+        "indicator_id": item.indicator_id,
+        "indicator_code": item.indicator.code,
+        "indicator_name": item.indicator.name,
+        "process_id": item.indicator.process.id,
+        "process_name": item.indicator.process.name,
+        "meeting_level": item.indicator.meeting_level,
+        "entity_id": item.entity_id,
+        "entity_code": item.entity.code,
+        "entity_name": item.entity.name,
+        "entity_type": item.entity.entity_type,
+        "record_date": item.record_date,
+        "value": round(float(item.value if item.value is not None else 0), 2),
+        "general": general,
+        "status": status,
+        "observation": item.observation,
+        "unit": item.indicator.unit,
+        "frequency": item.indicator.frequency,
+        "capture_mode": item.indicator.capture_mode,
+        "scope_type": item.indicator.scope_type,
+        "target_value": round(target_value, 2),
+    }
+
+
+def build_entity_history_summary(records: list[EntityRecord]):
+    if not records:
+        return {
+            "total_records": 0,
+            "average_general": 0,
+            "ok_count": 0,
+            "warning_count": 0,
+            "critical_count": 0,
+            "processes": []
+        }
+
+    rows = [build_entity_history_row(item) for item in records]
+
+    total_records = len(rows)
+    average_general = round(sum(r["general"] for r in rows) / total_records, 2)
+    ok_count = len([r for r in rows if r["status"] == "ok"])
+    warning_count = len([r for r in rows if r["status"] == "warning"])
+    critical_count = len([r for r in rows if r["status"] == "critical"])
+
+    grouped = defaultdict(list)
+    for row in rows:
+        grouped[row["process_name"]].append(row)
+
+    processes = []
+    for process_name, items in grouped.items():
+        avg = round(sum(x["general"] for x in items) / len(items), 2)
+        processes.append({
+            "process_name": process_name,
+            "total_records": len(items),
+            "average_general": avg,
+            "ok_count": len([x for x in items if x["status"] == "ok"]),
+            "warning_count": len([x for x in items if x["status"] == "warning"]),
+            "critical_count": len([x for x in items if x["status"] == "critical"]),
+        })
+
+    processes.sort(key=lambda x: x["process_name"])
+
+    return {
+        "total_records": total_records,
+        "average_general": average_general,
+        "ok_count": ok_count,
+        "warning_count": warning_count,
+        "critical_count": critical_count,
+        "processes": processes,
+    }
 
 
 def build_legacy_person_out(item: Entity):
@@ -1177,10 +1376,10 @@ def get_period_matrix(
         "unit": indicator.unit,
         "target_operator": indicator.target_operator,
         "target_value": indicator.target_value,
-        "warning_operator": indicator.warning_operator,
-        "warning_value": indicator.warning_value,
-        "critical_operator": indicator.critical_operator,
-        "critical_value": indicator.critical_value,
+        "warning_operator": normalize_optional_operator(indicator.warning_operator),
+        "warning_value": normalize_optional_number(indicator.warning_value),
+        "critical_operator": normalize_optional_operator(indicator.critical_operator),
+        "critical_value": normalize_optional_number(indicator.critical_value),
         "frequency": indicator.frequency,
         "capture_mode": indicator.capture_mode,
         "shifts": indicator.shifts,
@@ -1320,7 +1519,7 @@ def save_month_matrix(payload: MonthlyRecordSave, db: Session = Depends(get_db))
 
 
 # -------------------------
-# HISTORY
+# HISTORY STANDARD
 # -------------------------
 @app.get("/history", response_model=list[DailyRecordOut])
 def get_history(
@@ -1394,6 +1593,69 @@ def get_history_summary(
         "critical_count": critical_count,
         "processes": processes
     }
+
+
+# -------------------------
+# HISTORY ENTITY
+# -------------------------
+@app.get("/history/entity")
+def get_entity_history(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    day: Optional[int] = None,
+    level: Optional[int] = None,
+    process_id: Optional[int] = None,
+    indicator_id: Optional[int] = None,
+    entity_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    query = base_entity_history_query(db).options(
+        joinedload(EntityRecord.indicator).joinedload(Indicator.process),
+        joinedload(EntityRecord.entity),
+        joinedload(EntityRecord.indicator).joinedload(Indicator.entity_indicator_targets),
+    )
+    query = apply_entity_record_filters(
+        query,
+        year=year,
+        month=month,
+        day=day,
+        level=level,
+        process_id=process_id,
+        indicator_id=indicator_id,
+        entity_id=entity_id,
+    )
+    records = query.order_by(EntityRecord.record_date.desc(), Indicator.code.asc(), Entity.id.asc()).all()
+    return [build_entity_history_row(item) for item in records]
+
+
+@app.get("/history/entity/summary")
+def get_entity_history_summary(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    day: Optional[int] = None,
+    level: Optional[int] = None,
+    process_id: Optional[int] = None,
+    indicator_id: Optional[int] = None,
+    entity_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    query = base_entity_history_query(db).options(
+        joinedload(EntityRecord.indicator).joinedload(Indicator.process),
+        joinedload(EntityRecord.entity),
+        joinedload(EntityRecord.indicator).joinedload(Indicator.entity_indicator_targets),
+    )
+    query = apply_entity_record_filters(
+        query,
+        year=year,
+        month=month,
+        day=day,
+        level=level,
+        process_id=process_id,
+        indicator_id=indicator_id,
+        entity_id=entity_id,
+    )
+    records = query.all()
+    return build_entity_history_summary(records)
 
 
 # -------------------------
@@ -1563,10 +1825,10 @@ def get_process_dashboard(
             "status": latest_record.status,
             "target_operator": latest_record.indicator.target_operator,
             "target_value": latest_record.indicator.target_value,
-            "warning_operator": latest_record.indicator.warning_operator,
-            "warning_value": latest_record.indicator.warning_value,
-            "critical_operator": latest_record.indicator.critical_operator,
-            "critical_value": latest_record.indicator.critical_value,
+            "warning_operator": normalize_optional_operator(latest_record.indicator.warning_operator),
+            "warning_value": normalize_optional_number(latest_record.indicator.warning_value),
+            "critical_operator": normalize_optional_operator(latest_record.indicator.critical_operator),
+            "critical_value": normalize_optional_number(latest_record.indicator.critical_value),
             "direction": direction,
         })
 
@@ -1828,16 +2090,15 @@ def get_entity_capture_grid(
     rows = []
     for target in targets:
         day_record = current_map.get(target.entity_id)
-        day_value = float(day_record.value) if day_record else 0.0
+        day_value = float(day_record.value) if day_record and day_record.value is not None else 0.0
         accumulated = round(float(accumulated_map.get(target.entity_id, 0.0)), 2)
         target_value = round(float(target.target_value or 0), 2)
         remaining = round(max(target_value - accumulated, 0.0), 2)
-
-        if target_value <= 0:
-            compliance = 100.0 if accumulated > 0 else 0.0
-        else:
-            compliance = round(min((accumulated / target_value) * 100.0, 100.0), 2)
-
+        compliance = calculate_compliance_by_rule(
+            indicator.target_operator,
+            target_value,
+            accumulated,
+        )
         status = calculate_entity_status(indicator, compliance)
 
         rows.append(EntityCaptureGridRow(
@@ -1901,14 +2162,18 @@ def save_entity_records_bulk(payload: EntityRecordBulkSave, db: Session = Depend
             EntityRecord.record_date == payload.record_date
         ).first()
 
-        raw_value = 0 if row.value is None else float(row.value)
+        value_provided = has_explicit_value(getattr(row, "value", None))
+        raw_value = float(row.value) if value_provided else None
         observation = (row.observation or "").strip()
 
-        if raw_value == 0 and not observation:
+        if not value_provided and not observation:
             if existing:
                 db.delete(existing)
                 deleted += 1
             continue
+
+        if raw_value is None:
+            raw_value = float(existing.value) if existing and existing.value is not None else 0.0
 
         if existing:
             existing.value = raw_value
@@ -2003,12 +2268,11 @@ def get_entity_dashboard(
         accumulated = round(float(accumulated_map.get(target.entity_id, 0.0)), 2)
         target_value = round(float(target.target_value or 0), 2)
         remaining = round(max(target_value - accumulated, 0.0), 2)
-
-        if target_value <= 0:
-            compliance = 100.0 if accumulated > 0 else 0.0
-        else:
-            compliance = round(min((accumulated / target_value) * 100.0, 100.0), 2)
-
+        compliance = calculate_compliance_by_rule(
+            indicator.target_operator,
+            target_value,
+            accumulated,
+        )
         status = calculate_entity_status(indicator, compliance)
 
         if status == "ok":
@@ -2267,3 +2531,74 @@ def legacy_person_dashboard(
             for row in data.ranking
         ],
     }
+
+
+@app.get("/history/person")
+def legacy_person_history(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    day: Optional[int] = None,
+    level: Optional[int] = None,
+    process_id: Optional[int] = None,
+    indicator_id: Optional[int] = None,
+    person_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    rows = get_entity_history(
+        year=year,
+        month=month,
+        day=day,
+        level=level,
+        process_id=process_id,
+        indicator_id=indicator_id,
+        entity_id=person_id,
+        db=db,
+    )
+    return [
+        {
+            "id": row["id"],
+            "indicator_id": row["indicator_id"],
+            "indicator_code": row["indicator_code"],
+            "indicator_name": row["indicator_name"],
+            "process_id": row["process_id"],
+            "process_name": row["process_name"],
+            "meeting_level": row["meeting_level"],
+            "person_id": row["entity_id"],
+            "person_code": row["entity_code"],
+            "person_name": row["entity_name"],
+            "record_date": row["record_date"],
+            "value": row["value"],
+            "general": row["general"],
+            "status": row["status"],
+            "observation": row["observation"],
+            "unit": row["unit"],
+            "frequency": row["frequency"],
+            "capture_mode": row["capture_mode"],
+            "scope_type": "person",
+            "target_value": row["target_value"],
+        }
+        for row in rows
+    ]
+
+
+@app.get("/history/person/summary")
+def legacy_person_history_summary(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    day: Optional[int] = None,
+    level: Optional[int] = None,
+    process_id: Optional[int] = None,
+    indicator_id: Optional[int] = None,
+    person_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    return get_entity_history_summary(
+        year=year,
+        month=month,
+        day=day,
+        level=level,
+        process_id=process_id,
+        indicator_id=indicator_id,
+        entity_id=person_id,
+        db=db,
+    )

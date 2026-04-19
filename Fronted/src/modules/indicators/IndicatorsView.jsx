@@ -32,7 +32,7 @@ function formatCaptureModeLabel(value) {
 }
 
 function formatRule(op, value, unit) {
-  if (value === "" || value === null || value === undefined) return "-";
+  if (!op || value === "" || value === null || value === undefined) return "-";
   return `${op} ${value}${unit === "número" ? "" : ` ${unit}`}`;
 }
 
@@ -107,6 +107,8 @@ export default function IndicatorsView({
   }, [entityFilter, entities, selectedIndicatorEntityTargets]);
 
   const isEntityIndicatorForm = indicatorForm.scope_type === "entity";
+  const useWarning = !!indicatorForm.use_warning;
+  const useCritical = !!indicatorForm.use_critical;
 
   return (
     <section className="content-card">
@@ -281,17 +283,38 @@ export default function IndicatorsView({
               </div>
 
               <div className="threshold-box">
-                <label>Warning</label>
+                <label style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <span>Warning</span>
+                  <input
+                    type="checkbox"
+                    checked={useWarning}
+                    onChange={(e) =>
+                      setIndicatorForm({
+                        ...indicatorForm,
+                        use_warning: e.target.checked,
+                        warning_operator: e.target.checked
+                          ? indicatorForm.warning_operator || ">="
+                          : null,
+                        warning_value: e.target.checked
+                          ? indicatorForm.warning_value ?? ""
+                          : null,
+                      })
+                    }
+                  />
+                </label>
+
                 <div className="threshold-row">
                   <select
-                    value={indicatorForm.warning_operator}
+                    value={indicatorForm.warning_operator || ""}
                     onChange={(e) =>
                       setIndicatorForm({
                         ...indicatorForm,
                         warning_operator: e.target.value,
                       })
                     }
+                    disabled={!useWarning}
                   >
+                    <option value="">-</option>
                     {OPERATORS.map((op) => (
                       <option key={op} value={op}>
                         {op}
@@ -302,30 +325,57 @@ export default function IndicatorsView({
                   <input
                     type="number"
                     step="0.01"
-                    value={indicatorForm.warning_value}
+                    value={
+                      indicatorForm.warning_value === null ||
+                      indicatorForm.warning_value === undefined
+                        ? ""
+                        : indicatorForm.warning_value
+                    }
                     onChange={(e) =>
                       setIndicatorForm({
                         ...indicatorForm,
                         warning_value: e.target.value,
                       })
                     }
-                    required
+                    disabled={!useWarning}
+                    placeholder="Opcional"
                   />
                 </div>
               </div>
 
               <div className="threshold-box">
-                <label>Critical</label>
+                <label style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <span>Critical</span>
+                  <input
+                    type="checkbox"
+                    checked={useCritical}
+                    onChange={(e) =>
+                      setIndicatorForm({
+                        ...indicatorForm,
+                        use_critical: e.target.checked,
+                        critical_operator: e.target.checked
+                          ? indicatorForm.critical_operator || "<"
+                          : null,
+                        critical_value: e.target.checked
+                          ? indicatorForm.critical_value ?? ""
+                          : null,
+                      })
+                    }
+                  />
+                </label>
+
                 <div className="threshold-row">
                   <select
-                    value={indicatorForm.critical_operator}
+                    value={indicatorForm.critical_operator || ""}
                     onChange={(e) =>
                       setIndicatorForm({
                         ...indicatorForm,
                         critical_operator: e.target.value,
                       })
                     }
+                    disabled={!useCritical}
                   >
+                    <option value="">-</option>
                     {OPERATORS.map((op) => (
                       <option key={op} value={op}>
                         {op}
@@ -336,14 +386,20 @@ export default function IndicatorsView({
                   <input
                     type="number"
                     step="0.01"
-                    value={indicatorForm.critical_value}
+                    value={
+                      indicatorForm.critical_value === null ||
+                      indicatorForm.critical_value === undefined
+                        ? ""
+                        : indicatorForm.critical_value
+                    }
                     onChange={(e) =>
                       setIndicatorForm({
                         ...indicatorForm,
                         critical_value: e.target.value,
                       })
                     }
-                    required
+                    disabled={!useCritical}
+                    placeholder="Opcional"
                   />
                 </div>
               </div>
@@ -364,22 +420,26 @@ export default function IndicatorsView({
               <div className="rule-item">
                 <span>Warning</span>
                 <strong>
-                  {formatRule(
-                    indicatorForm.warning_operator,
-                    indicatorForm.warning_value,
-                    indicatorForm.unit
-                  )}
+                  {useWarning
+                    ? formatRule(
+                        indicatorForm.warning_operator,
+                        indicatorForm.warning_value,
+                        indicatorForm.unit
+                      )
+                    : "-"}
                 </strong>
               </div>
 
               <div className="rule-item">
                 <span>Critical</span>
                 <strong>
-                  {formatRule(
-                    indicatorForm.critical_operator,
-                    indicatorForm.critical_value,
-                    indicatorForm.unit
-                  )}
+                  {useCritical
+                    ? formatRule(
+                        indicatorForm.critical_operator,
+                        indicatorForm.critical_value,
+                        indicatorForm.unit
+                      )
+                    : "-"}
                 </strong>
               </div>
             </div>
@@ -615,7 +675,7 @@ export default function IndicatorsView({
                         entity_type: e.target.value,
                       })
                     }
-                    placeholder="Ej. persona, máquina, línea"
+                    placeholder="Ej. persona, máquina, línea, vehículo"
                   />
                 </div>
 
@@ -702,12 +762,7 @@ export default function IndicatorsView({
                     step="0.01"
                     value={selectedEntityTargetValue}
                     onChange={(e) => setSelectedEntityTargetValue(e.target.value)}
-                    placeholder={
-                      selectedIndicatorForEntities?.target_value !== undefined &&
-                      selectedIndicatorForEntities?.target_value !== null
-                        ? `Base: ${selectedIndicatorForEntities.target_value}`
-                        : "Opcional"
-                    }
+                    placeholder="Ej. 0, 10, 25"
                   />
                 </div>
               </div>

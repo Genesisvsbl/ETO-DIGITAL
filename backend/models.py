@@ -38,11 +38,11 @@ class Indicator(Base):
     target_operator = Column(String, nullable=False, default=">=")
     target_value = Column(Float, nullable=False, default=0)
 
-    warning_operator = Column(String, nullable=False, default=">=")
-    warning_value = Column(Float, nullable=False, default=0)
+    warning_operator = Column(String, nullable=True, default=None)
+    warning_value = Column(Float, nullable=True, default=None)
 
-    critical_operator = Column(String, nullable=False, default="<")
-    critical_value = Column(Float, nullable=False, default=0)
+    critical_operator = Column(String, nullable=True, default=None)
+    critical_value = Column(Float, nullable=True, default=None)
 
     frequency = Column(String, nullable=False, default="day")
     capture_mode = Column(String, nullable=False, default="shifts")
@@ -52,8 +52,24 @@ class Indicator(Base):
 
     process = relationship("Process", back_populates="indicators")
     daily_records = relationship("DailyRecord", back_populates="indicator", cascade="all, delete")
-    entity_targets = relationship("EntityIndicatorTarget", back_populates="indicator", cascade="all, delete")
-    entity_records = relationship("EntityRecord", back_populates="indicator", cascade="all, delete")
+
+    entity_targets = relationship(
+        "EntityIndicatorTarget",
+        back_populates="indicator",
+        cascade="all, delete",
+    )
+    entity_records = relationship(
+        "EntityRecord",
+        back_populates="indicator",
+        cascade="all, delete",
+    )
+
+    # Alias de compatibilidad para main.py nuevo
+    entity_indicator_targets = relationship(
+        "EntityIndicatorTarget",
+        viewonly=True,
+        overlaps="entity_targets,indicator",
+    )
 
 
 class DailyRecord(Base):
