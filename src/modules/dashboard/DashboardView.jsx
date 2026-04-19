@@ -14,7 +14,6 @@ import {
   Cell,
   ComposedChart,
   LabelList,
-  ScatterChart,
   Scatter,
   ReferenceLine,
   ReferenceArea,
@@ -34,123 +33,34 @@ const CHART_COLORS = {
   navy: "#133a6b",
   blue: "#2459c3",
   blueSoft: "#9dbcf5",
+  blueLight: "#eef4ff",
   grid: "#d7e3f1",
   text: "#17324d",
+  textSoft: "#5f738a",
   pending: "#dce7f8",
   white: "#ffffff",
-  ok: "#8fb1ea",
+  ok: "#39a96b",
+  okSoft: "rgba(57, 169, 107, 0.12)",
   warning: "#f4c430",
+  warningSoft: "rgba(244, 196, 48, 0.14)",
   critical: "#e24b4b",
+  criticalSoft: "rgba(226, 75, 75, 0.13)",
   observation: "#6d4cff",
   target: "#1c4b8f",
   targetSoft: "rgba(28, 75, 143, 0.10)",
   warningArea: "rgba(244, 196, 48, 0.16)",
   criticalArea: "rgba(226, 75, 75, 0.14)",
+  cardBorder: "#e7eef7",
+  cardShadow: "0 16px 40px rgba(17, 42, 74, 0.08)",
+  cardShadowSoft: "0 12px 30px rgba(17, 42, 74, 0.06)",
 };
-
-const PIE_COLORS = ["#133a6b", "#2459c3", "#6f97de"];
-
-function PersonProgressLabel(props) {
-  const { x, y, width, payload } = props;
-
-  if (!payload) return null;
-
-  const meta = Number(payload.meta || 0);
-  const acumulado = Number(payload.acumulado || 0);
-  const pendiente = Number(payload.pendiente || 0);
-
-  const label = `Meta ${formatPlainNumber(meta)} | Hecho ${formatPlainNumber(
-    acumulado
-  )} | Pendiente ${formatPlainNumber(pendiente)}`;
-
-  return (
-    <text
-      x={x + width + 10}
-      y={y + 14}
-      fill={CHART_COLORS.text}
-      fontSize={12}
-      fontWeight={700}
-    >
-      {label}
-    </text>
-  );
-}
-
-function ObservationMarkerLabel(props) {
-  const { x, y, width, payload } = props;
-  if (!payload?.hasObservation) return null;
-
-  return (
-    <text
-      x={x + Number(width || 0) / 2}
-      y={y - 20}
-      textAnchor="middle"
-      fill={CHART_COLORS.observation}
-      fontSize={16}
-      fontWeight={900}
-    >
-      *
-    </text>
-  );
-}
-
-function ObservationScatterShape(props) {
-  const { cx, cy, payload } = props;
-  if (!payload?.hasObservation) return null;
-
-  return (
-    <g>
-      <circle
-        cx={cx}
-        cy={cy}
-        r={7}
-        fill={CHART_COLORS.white}
-        stroke={CHART_COLORS.observation}
-        strokeWidth={2}
-      />
-      <text
-        x={cx}
-        y={cy + 4}
-        textAnchor="middle"
-        fontSize={10}
-        fontWeight={900}
-        fill={CHART_COLORS.observation}
-      >
-        !
-      </text>
-    </g>
-  );
-}
 
 function normalizeGeneralToPercent(value) {
   const numeric = Number(value || 0);
-
   if (!Number.isFinite(numeric)) return 0;
   if (numeric <= 1) return numeric * 100;
   if (numeric > 100) return 100;
   return numeric;
-}
-
-function getMeasuredValueFromHistoryRow(row) {
-  if (!row) return 0;
-
-  if (row.capture_mode === "single") {
-    return Number(row.single_value || 0);
-  }
-
-  const values = [];
-  if (row.shift_a !== null && row.shift_a !== undefined) {
-    values.push(Number(row.shift_a));
-  }
-  if (row.shift_b !== null && row.shift_b !== undefined) {
-    values.push(Number(row.shift_b));
-  }
-  if (row.shift_c !== null && row.shift_c !== undefined) {
-    values.push(Number(row.shift_c));
-  }
-
-  if (!values.length) return 0;
-  return values.reduce((acc, val) => acc + val, 0) / values.length;
 }
 
 function normalizeStatus(status) {
@@ -159,7 +69,9 @@ function normalizeStatus(status) {
   if (
     normalized === "critical" ||
     normalized === "critico" ||
-    normalized === "crítico"
+    normalized === "crítico" ||
+    normalized === "red" ||
+    normalized === "rojo"
   ) {
     return "critical";
   }
@@ -167,7 +79,8 @@ function normalizeStatus(status) {
   if (
     normalized === "warning" ||
     normalized === "warn" ||
-    normalized === "amarillo"
+    normalized === "amarillo" ||
+    normalized === "yellow"
   ) {
     return "warning";
   }
@@ -175,27 +88,77 @@ function normalizeStatus(status) {
   return "ok";
 }
 
+function getSafeNumericValue(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function getBarColorByStatus(status) {
   const normalized = normalizeStatus(status);
-
   if (normalized === "critical") return CHART_COLORS.critical;
   if (normalized === "warning") return CHART_COLORS.warning;
   return CHART_COLORS.ok;
 }
 
+function getStatusLabel(status) {
+  const normalized = normalizeStatus(status);
+  if (normalized === "critical") return "CRITICAL";
+  if (normalized === "warning") return "WARNING";
+  return "OK";
+}
+
+function getStatusPillStyles(status) {
+  const normalized = normalizeStatus(status);
+
+  if (normalized === "critical") {
+    return {
+      color: CHART_COLORS.critical,
+      background: CHART_COLORS.criticalSoft,
+      border: `1px solid rgba(226,75,75,0.20)`,
+    };
+  }
+
+  if (normalized === "warning") {
+    return {
+      color: "#9a6b00",
+      background: CHART_COLORS.warningSoft,
+      border: `1px solid rgba(244,196,48,0.25)`,
+    };
+  }
+
+  return {
+    color: CHART_COLORS.ok,
+    background: CHART_COLORS.okSoft,
+    border: `1px solid rgba(57,169,107,0.18)`,
+  };
+}
+
+function isMatchingStatusFilter(status, filterValue) {
+  const currentFilter = String(filterValue || "all").toLowerCase();
+  if (!currentFilter || currentFilter === "all") return true;
+  return normalizeStatus(status) === currentFilter;
+}
+
+function safeDisplay(value, formatter = null) {
+  if (value === null || value === undefined || value === "") return "N/D";
+  if (typeof value === "number" && !Number.isFinite(value)) return "N/D";
+  return formatter ? formatter(value) : value;
+}
+
+function formatDelta(delta, suffix = "") {
+  const numeric = Number(delta);
+  if (!Number.isFinite(numeric)) return "N/D";
+  const sign = numeric > 0 ? "+" : "";
+  return `${sign}${numeric.toFixed(2)}${suffix}`;
+}
+
 function formatChartNumber(value) {
   const numeric = Number(value || 0);
-
   if (!Number.isFinite(numeric)) return "0";
   if (Number.isInteger(numeric)) return `${numeric}`;
   if (Math.abs(numeric) >= 100) return numeric.toFixed(1);
   if (Math.abs(numeric) >= 10) return numeric.toFixed(2);
   return numeric.toFixed(2);
-}
-
-function getSafeNumericValue(value) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function getIndicatorTargetLineValue(indicator) {
@@ -205,7 +168,6 @@ function getIndicatorTargetLineValue(indicator) {
 
 function getRuleDirection(operator) {
   const op = String(operator || "").trim();
-
   if (op === "<" || op === "<=") return "down";
   if (op === ">" || op === ">=") return "up";
   return "equal";
@@ -357,6 +319,30 @@ function buildIndicatorBackgroundBands(indicator, yDomainMax) {
     .sort((a, b) => a.priority - b.priority);
 }
 
+function getMeasuredValueFromHistoryRow(row) {
+  if (!row) return null;
+
+  if (row.capture_mode === "single") {
+    const value = Number(row.single_value);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  const values = [];
+  if (row.shift_a !== null && row.shift_a !== undefined && row.shift_a !== "") {
+    values.push(Number(row.shift_a));
+  }
+  if (row.shift_b !== null && row.shift_b !== undefined && row.shift_b !== "") {
+    values.push(Number(row.shift_b));
+  }
+  if (row.shift_c !== null && row.shift_c !== undefined && row.shift_c !== "") {
+    values.push(Number(row.shift_c));
+  }
+
+  const valid = values.filter((x) => Number.isFinite(x));
+  if (!valid.length) return null;
+  return valid.reduce((acc, val) => acc + val, 0) / valid.length;
+}
+
 function getDaysInMonth(year, month) {
   if (!year || !month) return 31;
   return new Date(Number(year), Number(month), 0).getDate();
@@ -469,39 +455,6 @@ function filterHistoryRowsByPeriod(historyRows, filter) {
   return sorted;
 }
 
-function buildDailySeriesFromHistory(historyRows, filter) {
-  const filteredRows = filterHistoryRowsByPeriod(historyRows, filter);
-
-  return filteredRows.map((item, index) => {
-    const recordDate = String(item.record_date || "").slice(0, 10);
-    const day = Number(recordDate.slice(8, 10)) || index + 1;
-    const realValue = Number(getMeasuredValueFromHistoryRow(item) || 0);
-    const general = normalizeGeneralToPercent(item.general || 0);
-    const status = normalizeStatus(item.status);
-    const observation = String(item.observation || "").trim();
-
-    return {
-      date: recordDate,
-      day,
-      xLabel: String(day),
-      fullshortLabel: String(day),
-      value: realValue,
-      trendValue: realValue,
-      general,
-      unit: item.unit || "",
-      status,
-      fill: getBarColorByStatus(status),
-      single_value: item.single_value,
-      shift_a: item.shift_a,
-      shift_b: item.shift_b,
-      shift_c: item.shift_c,
-      observation,
-      hasObservation: !!observation,
-      observationMarkerY: realValue,
-    };
-  });
-}
-
 function readHistoryRows(historyData) {
   if (Array.isArray(historyData)) return historyData;
   if (Array.isArray(historyData?.rows)) return historyData.rows;
@@ -534,6 +487,227 @@ function getSummaryValue(summary, keys, fallback = 0) {
   }
 
   return fallback;
+}
+
+function getLatestHistoryRecord(historyRows) {
+  const rows = Array.isArray(historyRows) ? historyRows : [];
+  if (!rows.length) return null;
+
+  return [...rows].sort(
+    (a, b) => new Date(b.record_date) - new Date(a.record_date)
+  )[0];
+}
+
+function getPreviousHistoryRecord(historyRows) {
+  const rows = Array.isArray(historyRows) ? historyRows : [];
+  if (rows.length < 2) return null;
+
+  const sorted = [...rows].sort(
+    (a, b) => new Date(b.record_date) - new Date(a.record_date)
+  );
+
+  return sorted[1] || null;
+}
+
+function buildDailySeriesFromHistory(historyRows, filter) {
+  const filteredRows = filterHistoryRowsByPeriod(historyRows, filter);
+
+  return filteredRows.map((item, index) => {
+    const recordDate = String(item.record_date || "").slice(0, 10);
+    const day = Number(recordDate.slice(8, 10)) || index + 1;
+    const realValue = getMeasuredValueFromHistoryRow(item);
+    const general = normalizeGeneralToPercent(item.general || 0);
+    const status = normalizeStatus(item.status);
+    const observation = String(item.observation || "").trim();
+
+    return {
+      date: recordDate,
+      day,
+      xLabel: String(day),
+      fullshortLabel: String(day),
+      value: Number.isFinite(realValue) ? realValue : 0,
+      originalValue: realValue,
+      trendValue: Number.isFinite(realValue) ? realValue : 0,
+      general,
+      unit: item.unit || "",
+      status,
+      fill: getBarColorByStatus(status),
+      single_value: item.single_value,
+      shift_a: item.shift_a,
+      shift_b: item.shift_b,
+      shift_c: item.shift_c,
+      observation,
+      hasObservation: !!observation,
+      observationMarkerY: Number.isFinite(realValue) ? realValue : 0,
+      target_value: item.target_value,
+      warning_value: item.warning_value,
+      critical_value: item.critical_value,
+    };
+  });
+}
+
+function PersonProgressLabel(props) {
+  const { x, y, width, payload } = props;
+
+  if (!payload) return null;
+
+  const meta = Number(payload.meta || 0);
+  const acumulado = Number(payload.acumulado || 0);
+  const pendiente = Number(payload.pendiente || 0);
+
+  const label = `Meta ${formatPlainNumber(meta)} | Hecho ${formatPlainNumber(
+    acumulado
+  )} | Pendiente ${formatPlainNumber(pendiente)}`;
+
+  return (
+    <text
+      x={x + width + 10}
+      y={y + 14}
+      fill={CHART_COLORS.text}
+      fontSize={12}
+      fontWeight={700}
+    >
+      {label}
+    </text>
+  );
+}
+
+function ObservationMarkerLabel(props) {
+  const { x, y, width, payload } = props;
+  if (!payload?.hasObservation) return null;
+
+  return (
+    <text
+      x={x + Number(width || 0) / 2}
+      y={y - 20}
+      textAnchor="middle"
+      fill={CHART_COLORS.observation}
+      fontSize={16}
+      fontWeight={900}
+    >
+      *
+    </text>
+  );
+}
+
+function ObservationScatterShape(props) {
+  const { cx, cy, payload } = props;
+  if (!payload?.hasObservation) return null;
+
+  return (
+    <g>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={7}
+        fill={CHART_COLORS.white}
+        stroke={CHART_COLORS.observation}
+        strokeWidth={2}
+      />
+      <text
+        x={cx}
+        y={cy + 4}
+        textAnchor="middle"
+        fontSize={10}
+        fontWeight={900}
+        fill={CHART_COLORS.observation}
+      >
+        !
+      </text>
+    </g>
+  );
+}
+
+function DailyValueTopLabel(props) {
+  const { x, y, width, payload } = props;
+  if (!payload) return null;
+
+  const value = Number(payload.value || 0);
+  const text = formatPlainNumber(value);
+  const safeWidth = Number(width || 0);
+
+  return (
+    <text
+      x={x + safeWidth / 2}
+      y={y - 6}
+      textAnchor="middle"
+      fill={CHART_COLORS.text}
+      fontSize={11}
+      fontWeight={800}
+    >
+      {text}
+    </text>
+  );
+}
+
+function MetricMiniCard({ title, value, tone = "neutral" }) {
+  const toneMap = {
+    neutral: {
+      background: "#ffffff",
+      color: CHART_COLORS.text,
+      border: CHART_COLORS.cardBorder,
+    },
+    ok: {
+      background: "#f5fbf8",
+      color: CHART_COLORS.ok,
+      border: "rgba(57,169,107,0.18)",
+    },
+    warning: {
+      background: "#fffaf0",
+      color: "#a16d00",
+      border: "rgba(244,196,48,0.22)",
+    },
+    critical: {
+      background: "#fff6f6",
+      color: CHART_COLORS.critical,
+      border: "rgba(226,75,75,0.22)",
+    },
+    primary: {
+      background: "#eef4ff",
+      color: CHART_COLORS.navy,
+      border: "rgba(36,89,195,0.15)",
+    },
+  };
+
+  const currentTone = toneMap[tone] || toneMap.neutral;
+
+  return (
+    <div
+      style={{
+        background: currentTone.background,
+        color: currentTone.color,
+        border: `1px solid ${currentTone.border}`,
+        borderRadius: 18,
+        padding: "14px 16px",
+        minHeight: 84,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        boxShadow: "0 10px 25px rgba(17,42,74,0.04)",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          color: CHART_COLORS.textSoft,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+        }}
+      >
+        {title}
+      </span>
+      <strong
+        style={{
+          fontSize: 24,
+          lineHeight: 1.1,
+          color: currentTone.color,
+        }}
+      >
+        {value}
+      </strong>
+    </div>
+  );
 }
 
 function TrendLegend({
@@ -635,94 +809,517 @@ function CustomDailyTooltip({
     selectedDashboardIndicator?.unit || valueAxisLabel
   );
 
+  const pillStyles = getStatusPillStyles(row.status);
+
   return (
     <div
       style={{
         background: "#ffffff",
         border: "1px solid #d7e3f1",
-        borderRadius: 14,
-        padding: "12px 14px",
-        boxShadow: "0 12px 30px rgba(23,50,77,0.12)",
-        minWidth: 270,
+        borderRadius: 16,
+        padding: "14px 16px",
+        boxShadow: "0 16px 34px rgba(23,50,77,0.14)",
+        minWidth: 300,
       }}
     >
       <div
         style={{
-          fontWeight: 800,
-          color: CHART_COLORS.text,
-          marginBottom: 8,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          marginBottom: 10,
         }}
       >
-        {row.date || label}
-      </div>
-
-      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 5 }}>
-        <strong>Valor:</strong> {formatPlainNumber(Number(row.value || 0))}{" "}
-        {valueAxisLabel}
-      </div>
-
-      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 5 }}>
-        <strong>Cumplimiento:</strong>{" "}
-        {formatPercent(Number(row.general || 0))}
-      </div>
-
-      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 5 }}>
-        <strong>Estado:</strong> {String(row.status || "ok").toUpperCase()}
-      </div>
-
-      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 5 }}>
-        <strong>Meta:</strong>{" "}
-        {targetValue !== null
-          ? `${formatPlainNumber(targetValue)} ${valueAxisLabel}`
-          : "No definida"}
-      </div>
-
-      <div style={{ color: CHART_COLORS.text, fontSize: 13, marginBottom: 5 }}>
-        <strong>Warning:</strong>{" "}
-        {warningRule || "No definido"}
-      </div>
-
-      <div style={{ color: CHART_COLORS.text, fontSize: 13 }}>
-        <strong>Critical:</strong>{" "}
-        {criticalRule || "No definido"}
-      </div>
-
-      {row.observation ? (
         <div
           style={{
+            fontWeight: 800,
             color: CHART_COLORS.text,
-            fontSize: 13,
-            marginTop: 10,
-            paddingTop: 8,
-            borderTop: "1px solid #e6eef8",
           }}
         >
-          <strong>Obs.:</strong> {row.observation}
+          {safeDisplay(row.date || label)}
         </div>
-      ) : null}
+
+        <span
+          style={{
+            ...pillStyles,
+            padding: "5px 10px",
+            borderRadius: 999,
+            fontSize: 11,
+            fontWeight: 800,
+            letterSpacing: "0.06em",
+          }}
+        >
+          {getStatusLabel(row.status)}
+        </span>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 8,
+          fontSize: 13,
+          color: CHART_COLORS.text,
+        }}
+      >
+        <div>
+          <strong>Fecha:</strong> {safeDisplay(row.date || label)}
+        </div>
+        <div>
+          <strong>Valor:</strong>{" "}
+          {row.originalValue !== null && row.originalValue !== undefined
+            ? `${formatPlainNumber(Number(row.value || 0))} ${valueAxisLabel}`
+            : "N/D"}
+        </div>
+        <div>
+          <strong>Cumplimiento:</strong>{" "}
+          {safeDisplay(
+            Number.isFinite(Number(row.general)) ? Number(row.general) : null,
+            formatPercent
+          )}
+        </div>
+        <div>
+          <strong>Estado:</strong> {safeDisplay(getStatusLabel(row.status))}
+        </div>
+        <div>
+          <strong>Meta:</strong>{" "}
+          {targetValue !== null
+            ? `${formatPlainNumber(targetValue)} ${valueAxisLabel}`
+            : "N/D"}
+        </div>
+        <div>
+          <strong>Warning rule:</strong> {warningRule || "N/D"}
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <strong>Critical rule:</strong> {criticalRule || "N/D"}
+        </div>
+      </div>
+
+      <div
+        style={{
+          color: CHART_COLORS.text,
+          fontSize: 13,
+          marginTop: 10,
+          paddingTop: 10,
+          borderTop: "1px solid #e6eef8",
+        }}
+      >
+        <strong>Observación:</strong> {safeDisplay(row.observation)}
+      </div>
     </div>
   );
 }
 
-function DailyValueTopLabel(props) {
-  const { x, y, width, payload } = props;
-  if (!payload) return null;
+function ExecutiveIndicatorCard({
+  selectedDashboardIndicator,
+  indicatorHistoryRows,
+  processValueAxisLabel,
+}) {
+  if (!selectedDashboardIndicator) return null;
 
-  const value = Number(payload.value || 0);
-  const text = formatPlainNumber(value);
-  const safeWidth = Number(width || 0);
+  const latestRecord = getLatestHistoryRecord(indicatorHistoryRows);
+  const previousRecord = getPreviousHistoryRecord(indicatorHistoryRows);
+
+  const latestMeasuredValue = latestRecord
+    ? getMeasuredValueFromHistoryRow(latestRecord)
+    : null;
+  const previousMeasuredValue = previousRecord
+    ? getMeasuredValueFromHistoryRow(previousRecord)
+    : null;
+
+  const complianceValue = latestRecord
+    ? normalizeGeneralToPercent(latestRecord.general || 0)
+    : null;
+
+  const targetValue = getSafeNumericValue(selectedDashboardIndicator.target_value);
+  const latestStatus = latestRecord
+    ? normalizeStatus(latestRecord.status)
+    : normalizeStatus(selectedDashboardIndicator.status);
+
+  const variationValue =
+    latestMeasuredValue !== null &&
+    latestMeasuredValue !== undefined &&
+    previousMeasuredValue !== null &&
+    previousMeasuredValue !== undefined
+      ? Number(latestMeasuredValue) - Number(previousMeasuredValue)
+      : null;
+
+  const latestObservation = String(latestRecord?.observation || "").trim();
+  const statusStyles = getStatusPillStyles(latestStatus);
+
+  const observationTone =
+    latestStatus === "critical"
+      ? {
+          background: "#fff6f6",
+          border: "1px solid rgba(226,75,75,0.22)",
+          color: CHART_COLORS.critical,
+        }
+      : latestStatus === "warning"
+      ? {
+          background: "#fffaf0",
+          border: "1px solid rgba(244,196,48,0.28)",
+          color: "#946400",
+        }
+      : {
+          background: "#f5fbf8",
+          border: "1px solid rgba(57,169,107,0.20)",
+          color: CHART_COLORS.ok,
+        };
 
   return (
-    <text
-      x={x + safeWidth / 2}
-      y={y - 6}
-      textAnchor="middle"
-      fill={CHART_COLORS.text}
-      fontSize={11}
-      fontWeight={800}
+    <section
+      className="chart-card premium-chart-card full-span"
+      style={{
+        padding: 0,
+        overflow: "hidden",
+        borderRadius: 24,
+        border: `1px solid ${CHART_COLORS.cardBorder}`,
+        boxShadow: CHART_COLORS.cardShadow,
+        background: "#ffffff",
+      }}
     >
-      {text}
-    </text>
+      <div
+        style={{
+          padding: "22px 22px 16px",
+          borderBottom: "1px solid #eef3fa",
+          background:
+            "linear-gradient(180deg, rgba(238,244,255,0.55) 0%, rgba(255,255,255,1) 100%)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 16,
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: CHART_COLORS.textSoft,
+                marginBottom: 6,
+              }}
+            >
+              Indicador seleccionado
+            </div>
+
+            <h3
+              style={{
+                margin: 0,
+                color: CHART_COLORS.text,
+                fontSize: 24,
+                lineHeight: 1.12,
+              }}
+            >
+              {selectedDashboardIndicator.code} - {selectedDashboardIndicator.name}
+            </h3>
+
+            <div
+              style={{
+                marginTop: 8,
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+                color: CHART_COLORS.textSoft,
+                fontSize: 13,
+              }}
+            >
+              <span>
+                Frecuencia:{" "}
+                <strong style={{ color: CHART_COLORS.text }}>
+                  {safeDisplay(
+                    selectedDashboardIndicator.frequency
+                      ? formatFrequencyLabel(selectedDashboardIndicator.frequency)
+                      : null
+                  )}
+                </strong>
+              </span>
+              <span>
+                Captura:{" "}
+                <strong style={{ color: CHART_COLORS.text }}>
+                  {safeDisplay(
+                    selectedDashboardIndicator.capture_mode
+                      ? formatCaptureModeLabel(
+                          selectedDashboardIndicator.capture_mode
+                        )
+                      : null
+                  )}
+                </strong>
+              </span>
+            </div>
+          </div>
+
+          <span
+            style={{
+              ...statusStyles,
+              padding: "8px 14px",
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 900,
+              letterSpacing: "0.08em",
+              alignSelf: "flex-start",
+            }}
+          >
+            {safeDisplay(getStatusLabel(latestStatus))}
+          </span>
+        </div>
+      </div>
+
+      <div
+        style={{
+          padding: 22,
+          display: "grid",
+          gridTemplateColumns: "minmax(320px, 1.55fr) minmax(280px, 1fr)",
+          gap: 18,
+        }}
+      >
+        <div
+          style={{
+            border: "1px solid #edf2f8",
+            borderRadius: 22,
+            padding: 18,
+            background: "#ffffff",
+            boxShadow: CHART_COLORS.cardShadowSoft,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: CHART_COLORS.textSoft,
+              marginBottom: 14,
+            }}
+          >
+            Bloque izquierda · info principal
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(140px, 1fr))",
+              gap: 14,
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: CHART_COLORS.textSoft,
+                  marginBottom: 6,
+                }}
+              >
+                Fecha último registro
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color: CHART_COLORS.text,
+                }}
+              >
+                {safeDisplay(latestRecord?.record_date)}
+              </div>
+            </div>
+
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: CHART_COLORS.textSoft,
+                  marginBottom: 6,
+                }}
+              >
+                Meta
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color: CHART_COLORS.text,
+                }}
+              >
+                {targetValue !== null
+                  ? `${formatPlainNumber(targetValue)} ${processValueAxisLabel}`
+                  : "N/D"}
+              </div>
+            </div>
+
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: CHART_COLORS.textSoft,
+                  marginBottom: 6,
+                }}
+              >
+                Valor real
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color: CHART_COLORS.text,
+                }}
+              >
+                {latestMeasuredValue !== null
+                  ? `${formatPlainNumber(latestMeasuredValue)} ${processValueAxisLabel}`
+                  : "N/D"}
+              </div>
+            </div>
+
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: CHART_COLORS.textSoft,
+                  marginBottom: 6,
+                }}
+              >
+                Variación vs anterior
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color:
+                    variationValue === null
+                      ? CHART_COLORS.text
+                      : variationValue < 0
+                      ? CHART_COLORS.critical
+                      : variationValue > 0
+                      ? CHART_COLORS.ok
+                      : CHART_COLORS.text,
+                }}
+              >
+                {variationValue !== null
+                  ? `${formatDelta(variationValue)} ${processValueAxisLabel}`
+                  : "N/D"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            border: "1px solid #edf2f8",
+            borderRadius: 22,
+            padding: 18,
+            background: "#fbfdff",
+            boxShadow: CHART_COLORS.cardShadowSoft,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: CHART_COLORS.textSoft,
+              marginBottom: 14,
+            }}
+          >
+            Bloque derecha · KPIs
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+            }}
+          >
+            <MetricMiniCard
+              title="% cumplimiento"
+              value={
+                complianceValue !== null ? formatPercent(complianceValue) : "N/D"
+              }
+              tone="primary"
+            />
+
+            <MetricMiniCard
+              title="Estado"
+              value={safeDisplay(getStatusLabel(latestStatus))}
+              tone={latestStatus}
+            />
+
+            <MetricMiniCard
+              title="Warning rule"
+              value={
+                safeDisplay(
+                  formatRule(
+                    selectedDashboardIndicator.warning_operator,
+                    selectedDashboardIndicator.warning_value,
+                    selectedDashboardIndicator.unit || processValueAxisLabel
+                  )
+                )
+              }
+              tone="neutral"
+            />
+
+            <MetricMiniCard
+              title="Critical rule"
+              value={
+                safeDisplay(
+                  formatRule(
+                    selectedDashboardIndicator.critical_operator,
+                    selectedDashboardIndicator.critical_value,
+                    selectedDashboardIndicator.unit || processValueAxisLabel
+                  )
+                )
+              }
+              tone="neutral"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          padding: "0 22px 22px",
+        }}
+      >
+        <div
+          style={{
+            borderRadius: 22,
+            padding: "16px 18px",
+            ...observationTone,
+            boxShadow: "0 10px 26px rgba(17,42,74,0.05)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              marginBottom: 8,
+              opacity: 0.9,
+            }}
+          >
+            Bloque abajo · observación
+          </div>
+
+          <div
+            style={{
+              fontSize: 15,
+              lineHeight: 1.55,
+              fontWeight: 600,
+            }}
+          >
+            {latestObservation || "N/D"}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -860,7 +1457,7 @@ function renderTrendChart({
             yAxisId="left"
             dataKey="value"
             name={processValueAxisLabel}
-            radius={[8, 8, 0, 0]}
+            radius={[10, 10, 0, 0]}
             maxBarSize={expanded ? 46 : 34}
           >
             {processDailySeries.map((entry, index) => (
@@ -952,6 +1549,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     level: "",
     period: "month",
     week_segment: "",
+    status_filter: "all",
   });
 
   const filteredIndicatorsForDashboard = useMemo(() => {
@@ -1084,24 +1682,48 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       dashboardData?.status_distribution ||
       dashboardOverview?.status_distribution ||
       [];
-    const total = source.reduce((acc, item) => acc + item.value, 0);
 
-    return source
-      .filter((x) => x.value > 0)
+    const normalizedSource = source
       .map((item) => ({
         ...item,
-        percentage: total ? ((item.value / total) * 100).toFixed(1) : "0.0",
+        normalizedStatus: normalizeStatus(item.name),
+      }))
+      .filter((item) =>
+        isMatchingStatusFilter(item.normalizedStatus, dashboardFilter.status_filter)
+      );
+
+    const total = normalizedSource.reduce(
+      (acc, item) => acc + Number(item.value || 0),
+      0
+    );
+
+    return normalizedSource
+      .filter((x) => Number(x.value || 0) > 0)
+      .map((item) => ({
+        ...item,
+        name: getStatusLabel(item.normalizedStatus),
+        percentage: total
+          ? ((Number(item.value || 0) / total) * 100).toFixed(1)
+          : "0.0",
+        fill: getBarColorByStatus(item.normalizedStatus),
       }));
-  }, [dashboardData, dashboardOverview]);
+  }, [dashboardData, dashboardOverview, dashboardFilter.status_filter]);
 
   const dashboardBarData = useMemo(() => {
     if (!dashboardData?.indicator_cards?.length) return [];
-    return dashboardData.indicator_cards.map((item) => ({
-      name: formatCompactName(item.code, 16),
-      fullName: `${item.code} - ${item.name}`,
-      general: item.general,
-    }));
-  }, [dashboardData]);
+
+    return dashboardData.indicator_cards
+      .map((item) => ({
+        name: formatCompactName(item.code, 16),
+        fullName: `${item.code} - ${item.name}`,
+        general: Number(item.general || 0),
+        status: normalizeStatus(item.status),
+        fill: getBarColorByStatus(item.status),
+      }))
+      .filter((item) =>
+        isMatchingStatusFilter(item.status, dashboardFilter.status_filter)
+      );
+  }, [dashboardData, dashboardFilter.status_filter]);
 
   const globalRankingData = useMemo(() => {
     return (dashboardOverview?.process_ranking || []).map((item) => ({
@@ -1115,25 +1737,29 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       return [];
     }
 
-    return dashboardData.ranking.map((item) => ({
-      name: formatCompactName(item.entity_name, 20),
-      fullName: item.entity_name,
-      meta: Number(item.target_value || 0),
-      acumulado: Number(item.accumulated || 0),
-      pendiente: Math.max(Number(item.remaining || 0), 0),
-      cumplimiento: Number(item.compliance || 0),
-      estado: item.status,
-      entityCode: item.entity_code,
-      entityType: item.entity_type || "",
-    }));
-  }, [dashboardData]);
+    return dashboardData.ranking
+      .map((item) => ({
+        name: formatCompactName(item.entity_name, 20),
+        fullName: item.entity_name,
+        meta: Number(item.target_value || 0),
+        acumulado: Number(item.accumulated || 0),
+        pendiente: Math.max(Number(item.remaining || 0), 0),
+        cumplimiento: Number(item.compliance || 0),
+        estado: normalizeStatus(item.status),
+        entityCode: item.entity_code,
+        entityType: item.entity_type || "",
+      }))
+      .filter((item) =>
+        isMatchingStatusFilter(item.estado, dashboardFilter.status_filter)
+      );
+  }, [dashboardData, dashboardFilter.status_filter]);
 
   const entityDashboardChartHeight = useMemo(() => {
     const rows = entityDashboardBarData.length;
-    return Math.max(420, rows * 42);
+    return Math.max(420, rows * 48);
   }, [entityDashboardBarData]);
 
-  const processDailySeries = useMemo(() => {
+  const processDailySeriesRaw = useMemo(() => {
     if (!dashboardData || dashboardData?.is_entity_dashboard) return [];
 
     if (isStandardIndicatorSelected && indicatorHistoryRows.length) {
@@ -1143,6 +1769,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     return (dashboardData?.trend || [])
       .map((item, index) => {
         const numericValue = Number(item.value || 0);
+        const status = normalizeStatus(item.status || "ok");
         return {
           date: item.label,
           day: Number(String(item.label || "").slice(8, 10)) || index + 1,
@@ -1150,14 +1777,15 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
             Number(String(item.label || "").slice(8, 10)) || index + 1
           ),
           shortLabel: formatShortDate(item.label),
-          value: numericValue,
-          trendValue: numericValue,
-          general: normalizeGeneralToPercent(item.value || 0),
-          status: "ok",
-          fill: CHART_COLORS.ok,
-          observation: "",
-          hasObservation: false,
-          observationMarkerY: numericValue,
+          value: Number.isFinite(numericValue) ? numericValue : 0,
+          originalValue: Number.isFinite(numericValue) ? numericValue : null,
+          trendValue: Number.isFinite(numericValue) ? numericValue : 0,
+          general: normalizeGeneralToPercent(item.general ?? item.value ?? 0),
+          status,
+          fill: getBarColorByStatus(status),
+          observation: String(item.observation || "").trim(),
+          hasObservation: !!String(item.observation || "").trim(),
+          observationMarkerY: Number.isFinite(numericValue) ? numericValue : 0,
         };
       })
       .sort((a, b) => Number(a.day) - Number(b.day));
@@ -1167,6 +1795,12 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     isStandardIndicatorSelected,
     dashboardFilter,
   ]);
+
+  const processDailySeries = useMemo(() => {
+    return processDailySeriesRaw.filter((item) =>
+      isMatchingStatusFilter(item.status, dashboardFilter.status_filter)
+    );
+  }, [processDailySeriesRaw, dashboardFilter.status_filter]);
 
   const processValueAxisLabel = useMemo(() => {
     if (!selectedDashboardIndicator) return "Valor";
@@ -1244,6 +1878,50 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     return processDailySeries.filter((item) => item.hasObservation).length;
   }, [processDailySeries]);
 
+  const entitySummaryFiltered = useMemo(() => {
+    const source = dashboardData?.summary || {};
+
+    if (!dashboardData?.is_entity_dashboard) return null;
+
+    if (dashboardFilter.status_filter === "ok") {
+      return {
+        average_compliance: source.average_compliance,
+        total_entities: entityDashboardBarData.length,
+        ok_count: entityDashboardBarData.length,
+        warning_count: 0,
+        critical_count: 0,
+      };
+    }
+
+    if (dashboardFilter.status_filter === "warning") {
+      return {
+        average_compliance: source.average_compliance,
+        total_entities: entityDashboardBarData.length,
+        ok_count: 0,
+        warning_count: entityDashboardBarData.length,
+        critical_count: 0,
+      };
+    }
+
+    if (dashboardFilter.status_filter === "critical") {
+      return {
+        average_compliance: source.average_compliance,
+        total_entities: entityDashboardBarData.length,
+        ok_count: 0,
+        warning_count: 0,
+        critical_count: entityDashboardBarData.length,
+      };
+    }
+
+    return {
+      average_compliance: source.average_compliance,
+      total_entities: source.total_entities,
+      ok_count: source.ok_count,
+      warning_count: source.warning_count,
+      critical_count: source.critical_count,
+    };
+  }, [dashboardData, entityDashboardBarData, dashboardFilter.status_filter]);
+
   return (
     <section className="content-card dashboard-master-card">
       <div className="card-header-block dashboard-header">
@@ -1260,7 +1938,16 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
 
       {message && <div className="alert">{message}</div>}
 
-      <form onSubmit={handleLoadDashboard} className="filters-card">
+      <form
+        onSubmit={handleLoadDashboard}
+        className="filters-card"
+        style={{
+          borderRadius: 24,
+          border: `1px solid ${CHART_COLORS.cardBorder}`,
+          boxShadow: CHART_COLORS.cardShadowSoft,
+          background: "#ffffff",
+        }}
+      >
         <div className="inline-form-grid dashboard-filters">
           <div className="field">
             <label>Proceso</label>
@@ -1380,6 +2067,24 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
             </select>
           </div>
 
+          <div className="field">
+            <label>Filtro por estado</label>
+            <select
+              value={dashboardFilter.status_filter}
+              onChange={(e) =>
+                setDashboardFilter({
+                  ...dashboardFilter,
+                  status_filter: e.target.value,
+                })
+              }
+            >
+              <option value="all">Todos</option>
+              <option value="ok">OK</option>
+              <option value="warning">Warning</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+
           {dashboardFilter.period === "week" && (
             <div className="field">
               <label>Semana / rango</label>
@@ -1418,38 +2123,49 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
             <div className="executive-kpi blue-main">
               <span>Promedio general</span>
               <strong>
-                {formatPercent(dashboardOverview.summary.average_general)}
+                {safeDisplay(
+                  dashboardOverview?.summary?.average_general,
+                  formatPercent
+                )}
               </strong>
               <small>Consolidado de todos los procesos</small>
             </div>
 
             <div className="executive-kpi blue-neutral">
               <span>Registros</span>
-              <strong>{dashboardOverview.summary.total_records}</strong>
+              <strong>{safeDisplay(dashboardOverview?.summary?.total_records)}</strong>
               <small>Volumen total analizado</small>
             </div>
 
             <div className="executive-kpi blue-neutral">
               <span>OK</span>
-              <strong>{dashboardOverview.summary.ok_count}</strong>
+              <strong>{safeDisplay(dashboardOverview?.summary?.ok_count)}</strong>
               <small>En rango esperado</small>
             </div>
 
             <div className="executive-kpi blue-neutral">
               <span>Warning</span>
-              <strong>{dashboardOverview.summary.warning_count}</strong>
+              <strong>{safeDisplay(dashboardOverview?.summary?.warning_count)}</strong>
               <small>Con seguimiento</small>
             </div>
 
             <div className="executive-kpi blue-neutral">
               <span>Critical</span>
-              <strong>{dashboardOverview.summary.critical_count}</strong>
+              <strong>{safeDisplay(dashboardOverview?.summary?.critical_count)}</strong>
               <small>Atención prioritaria</small>
             </div>
           </section>
 
           <div className="dashboard-overview-grid premium-overview">
-            <section className="chart-card premium-chart-card">
+            <section
+              className="chart-card premium-chart-card"
+              style={{
+                borderRadius: 24,
+                border: `1px solid ${CHART_COLORS.cardBorder}`,
+                boxShadow: CHART_COLORS.cardShadow,
+                background: "#ffffff",
+              }}
+            >
               <div className="subsection-title">Ranking de procesos</div>
               <div className="chart-container executive-chart">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1470,7 +2186,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       dataKey="value"
                       name="Promedio"
                       fill={CHART_COLORS.blue}
-                      radius={[10, 10, 10, 10]}
+                      radius={[12, 12, 12, 12]}
                     >
                       <LabelList
                         dataKey="value"
@@ -1488,7 +2204,15 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               </div>
             </section>
 
-            <section className="chart-card premium-chart-card donut-card">
+            <section
+              className="chart-card premium-chart-card donut-card"
+              style={{
+                borderRadius: 24,
+                border: `1px solid ${CHART_COLORS.cardBorder}`,
+                boxShadow: CHART_COLORS.cardShadow,
+                background: "#ffffff",
+              }}
+            >
               <div className="subsection-title">Distribución de estados</div>
               <div className="chart-container executive-chart">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1500,14 +2224,11 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       outerRadius={92}
                       innerRadius={58}
                       paddingAngle={4}
-                      cornerRadius={8}
+                      cornerRadius={10}
                       label={({ name, percentage }) => `${name}: ${percentage}%`}
                     >
-                      {dashboardPieData.map((entry, index) => (
-                        <Cell
-                          key={entry.name}
-                          fill={PIE_COLORS[index % PIE_COLORS.length]}
-                        />
+                      {dashboardPieData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
                       ))}
                     </Pie>
                     <Tooltip
@@ -1524,15 +2245,21 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
           <section className="dashboard-process-panel">
             <div className="subsection-title">Vista ejecutiva por proceso</div>
             <div className="process-overview-grid compact-process-grid">
-              {dashboardOverview.process_cards.map((item, index) => (
+              {(dashboardOverview.process_cards || []).map((item, index) => (
                 <div
                   key={item.process_name}
                   className="process-card executive-process-card clean-process-card"
+                  style={{
+                    borderRadius: 22,
+                    border: `1px solid ${CHART_COLORS.cardBorder}`,
+                    boxShadow: CHART_COLORS.cardShadowSoft,
+                    background: "#ffffff",
+                  }}
                 >
                   <div className="process-rank-chip">#{index + 1}</div>
-                  <div className="process-card-title">{item.process_name}</div>
+                  <div className="process-card-title">{safeDisplay(item.process_name)}</div>
                   <div className="process-card-value big-percent">
-                    {formatPercent(item.average_general)}
+                    {safeDisplay(item.average_general, formatPercent)}
                   </div>
                 </div>
               ))}
@@ -1549,13 +2276,14 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                 <div>
                   <div className="section-kicker">INDICADOR POR ENTIDAD</div>
                   <h2>
-                    {dashboardData.indicator_code} - {dashboardData.indicator_name}
+                    {safeDisplay(dashboardData.indicator_code)} -{" "}
+                    {safeDisplay(dashboardData.indicator_name)}
                   </h2>
                   <p>Ranking mensual por cumplimiento individual.</p>
                 </div>
                 <div className="focus-banner-side">
                   <span className="status-pill dark">
-                    {dashboardData.period_label}
+                    {safeDisplay(dashboardData.period_label)}
                   </span>
                 </div>
               </section>
@@ -1564,47 +2292,82 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                 <div className="executive-kpi blue-main">
                   <span>Promedio cumplimiento</span>
                   <strong>
-                    {formatPercent(dashboardData.summary.average_compliance)}
+                    {safeDisplay(
+                      entitySummaryFiltered?.average_compliance,
+                      formatPercent
+                    )}
                   </strong>
                   <small>Promedio del indicador por entidad</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>Total entidades</span>
-                  <strong>{dashboardData.summary.total_entities}</strong>
+                  <strong>{safeDisplay(entitySummaryFiltered?.total_entities)}</strong>
                   <small>Entidades evaluadas</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>OK</span>
-                  <strong>{dashboardData.summary.ok_count}</strong>
+                  <strong>{safeDisplay(entitySummaryFiltered?.ok_count)}</strong>
                   <small>Cumplen meta</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>Warning</span>
-                  <strong>{dashboardData.summary.warning_count}</strong>
+                  <strong>{safeDisplay(entitySummaryFiltered?.warning_count)}</strong>
                   <small>En seguimiento</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>Critical</span>
-                  <strong>{dashboardData.summary.critical_count}</strong>
+                  <strong>{safeDisplay(entitySummaryFiltered?.critical_count)}</strong>
                   <small>Prioridad alta</small>
                 </div>
               </section>
 
-              <section className="chart-card premium-chart-card full-span">
-                <div className="subsection-title">
-                  Avance por entidad frente a la meta
+              <section
+                className="chart-card premium-chart-card full-span"
+                style={{
+                  borderRadius: 26,
+                  border: `1px solid ${CHART_COLORS.cardBorder}`,
+                  boxShadow: CHART_COLORS.cardShadow,
+                  background:
+                    "linear-gradient(180deg, rgba(247,250,255,0.9) 0%, rgba(255,255,255,1) 100%)",
+                }}
+              >
+                <div
+                  className="subsection-title"
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span>Avance por entidad frente a la meta</span>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: CHART_COLORS.textSoft,
+                      background: "#f3f7fd",
+                      border: "1px solid #e2ebf6",
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                    }}
+                  >
+                    Estilo ejecutivo · vista tipo Power BI
+                  </span>
                 </div>
 
                 <div
                   style={{
-                    maxHeight: 520,
+                    maxHeight: 560,
                     overflowY: "auto",
                     overflowX: "hidden",
                     paddingRight: 6,
+                    marginTop: 8,
                   }}
                 >
                   <div
@@ -1618,8 +2381,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       <BarChart
                         data={entityDashboardBarData}
                         layout="vertical"
-                        margin={{ top: 18, right: 220, left: 18, bottom: 18 }}
-                        barCategoryGap={10}
+                        margin={{ top: 20, right: 240, left: 24, bottom: 20 }}
+                        barCategoryGap={12}
                       >
                         <CartesianGrid
                           strokeDasharray="3 3"
@@ -1629,26 +2392,83 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                         <YAxis
                           dataKey="name"
                           type="category"
-                          width={150}
+                          width={170}
                           interval={0}
                           tick={{ fill: CHART_COLORS.text, fontSize: 12 }}
                         />
                         <Tooltip
-                          formatter={(value, name) => {
-                            if (name === "Acumulado") return formatPlainNumber(value);
-                            if (name === "Pendiente") return formatPlainNumber(value);
-                            return value;
+                          content={({ active, payload, label }) => {
+                            if (!active || !payload?.length) return null;
+                            const row = payload?.[0]?.payload || {};
+
+                            return (
+                              <div
+                                style={{
+                                  background: "#ffffff",
+                                  border: "1px solid #dfe9f5",
+                                  borderRadius: 16,
+                                  padding: "14px 16px",
+                                  boxShadow: "0 18px 36px rgba(18,42,74,0.14)",
+                                  minWidth: 280,
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontWeight: 800,
+                                    color: CHART_COLORS.text,
+                                    marginBottom: 10,
+                                  }}
+                                >
+                                  {safeDisplay(row.fullName || label)}
+                                </div>
+
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gap: 6,
+                                    fontSize: 13,
+                                    color: CHART_COLORS.text,
+                                  }}
+                                >
+                                  <div>
+                                    <strong>Tipo:</strong>{" "}
+                                    {safeDisplay(row.entityType)}
+                                  </div>
+                                  <div>
+                                    <strong>Código:</strong>{" "}
+                                    {safeDisplay(row.entityCode)}
+                                  </div>
+                                  <div>
+                                    <strong>Meta:</strong>{" "}
+                                    {safeDisplay(row.meta, formatPlainNumber)}
+                                  </div>
+                                  <div>
+                                    <strong>Acumulado:</strong>{" "}
+                                    {safeDisplay(row.acumulado, formatPlainNumber)}
+                                  </div>
+                                  <div>
+                                    <strong>Pendiente:</strong>{" "}
+                                    {safeDisplay(row.pendiente, formatPlainNumber)}
+                                  </div>
+                                  <div>
+                                    <strong>Cumplimiento:</strong>{" "}
+                                    {safeDisplay(row.cumplimiento, formatPercent)}
+                                  </div>
+                                  <div>
+                                    <strong>Estado:</strong>{" "}
+                                    {safeDisplay(getStatusLabel(row.estado))}
+                                  </div>
+                                </div>
+                              </div>
+                            );
                           }}
-                          labelFormatter={(label, payload) =>
-                            payload?.[0]?.payload?.fullName || label
-                          }
                         />
                         <Bar
                           dataKey="acumulado"
                           name="Acumulado"
                           stackId="a"
                           fill={CHART_COLORS.blue}
-                          radius={[8, 0, 0, 8]}
+                          radius={[10, 0, 0, 10]}
                         >
                           <LabelList
                             dataKey="acumulado"
@@ -1666,7 +2486,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                           name="Pendiente"
                           stackId="a"
                           fill={CHART_COLORS.pending}
-                          radius={[0, 8, 8, 0]}
+                          radius={[0, 10, 10, 0]}
                         >
                           <LabelList
                             dataKey="pendiente"
@@ -1686,7 +2506,15 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                 </div>
               </section>
 
-              <section className="panel-block">
+              <section
+                className="panel-block"
+                style={{
+                  borderRadius: 24,
+                  border: `1px solid ${CHART_COLORS.cardBorder}`,
+                  boxShadow: CHART_COLORS.cardShadowSoft,
+                  background: "#ffffff",
+                }}
+              >
                 <div className="subsection-title">Ranking por entidad</div>
                 <div className="table-wrap">
                   <table>
@@ -1703,24 +2531,46 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {(dashboardData.ranking || []).map((item) => (
-                        <tr key={item.entity_id}>
-                          <td>{item.entity_type || "-"}</td>
-                          <td>{item.entity_code}</td>
-                          <td>{item.entity_name}</td>
-                          <td>{formatPlainNumber(item.target_value)}</td>
-                          <td>{formatPlainNumber(item.accumulated)}</td>
-                          <td>{formatPlainNumber(item.remaining)}</td>
-                          <td>{formatPercent(item.compliance)}</td>
-                          <td>
-                            <span className={`status ${item.status}`}>
-                              {item.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {(dashboardData.ranking || [])
+                        .filter((item) =>
+                          isMatchingStatusFilter(
+                            normalizeStatus(item.status),
+                            dashboardFilter.status_filter
+                          )
+                        )
+                        .map((item) => (
+                          <tr key={item.entity_id}>
+                            <td>{safeDisplay(item.entity_type || "-")}</td>
+                            <td>{safeDisplay(item.entity_code)}</td>
+                            <td>{safeDisplay(item.entity_name)}</td>
+                            <td>{safeDisplay(item.target_value, formatPlainNumber)}</td>
+                            <td>{safeDisplay(item.accumulated, formatPlainNumber)}</td>
+                            <td>{safeDisplay(item.remaining, formatPlainNumber)}</td>
+                            <td>{safeDisplay(item.compliance, formatPercent)}</td>
+                            <td>
+                              <span
+                                className={`status ${normalizeStatus(item.status)}`}
+                                style={{
+                                  ...getStatusPillStyles(item.status),
+                                  borderRadius: 999,
+                                  padding: "5px 10px",
+                                  display: "inline-flex",
+                                  fontWeight: 800,
+                                  fontSize: 11,
+                                }}
+                              >
+                                {getStatusLabel(item.status)}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
 
-                      {!dashboardData.ranking?.length && (
+                      {!dashboardData.ranking?.filter((item) =>
+                        isMatchingStatusFilter(
+                          normalizeStatus(item.status),
+                          dashboardFilter.status_filter
+                        )
+                      ).length && (
                         <tr>
                           <td colSpan="8" className="empty">
                             Sin resultados
@@ -1737,7 +2587,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               <section className="process-focus-banner">
                 <div>
                   <div className="section-kicker">PROCESO SELECCIONADO</div>
-                  <h2>{dashboardData.process.name}</h2>
+                  <h2>{safeDisplay(dashboardData?.process?.name)}</h2>
                   <p>
                     Lectura ejecutiva del proceso con tendencia, comparativos y
                     foco de impacto.
@@ -1745,7 +2595,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                 </div>
                 <div className="focus-banner-side">
                   <span className="status-pill">
-                    Nivel {dashboardData.process.level}
+                    Nivel {safeDisplay(dashboardData?.process?.level)}
                   </span>
                   <span className="status-pill dark">Detalle ejecutivo</span>
                 </div>
@@ -1754,7 +2604,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               <section className="executive-kpi-grid clean-kpis">
                 <div className="executive-kpi blue-main">
                   <span>Promedio general</span>
-                  <strong>{formatPercent(dashboardAverageGeneral)}</strong>
+                  <strong>{safeDisplay(dashboardAverageGeneral, formatPercent)}</strong>
                   <small>
                     {historySummary
                       ? "Tomado directamente del resumen del histórico"
@@ -1764,31 +2614,47 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
 
                 <div className="executive-kpi blue-neutral">
                   <span>Registros</span>
-                  <strong>{dashboardTotalRecords}</strong>
+                  <strong>{safeDisplay(dashboardTotalRecords)}</strong>
                   <small>Total de capturas analizadas</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>OK</span>
-                  <strong>{dashboardOkCount}</strong>
+                  <strong>{safeDisplay(dashboardOkCount)}</strong>
                   <small>Dentro de rango</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>Warning</span>
-                  <strong>{dashboardWarningCount}</strong>
+                  <strong>{safeDisplay(dashboardWarningCount)}</strong>
                   <small>Seguimiento</small>
                 </div>
 
                 <div className="executive-kpi blue-neutral">
                   <span>Critical</span>
-                  <strong>{dashboardCriticalCount}</strong>
+                  <strong>{safeDisplay(dashboardCriticalCount)}</strong>
                   <small>Prioridad alta</small>
                 </div>
               </section>
 
+              {isStandardIndicatorSelected && (
+                <ExecutiveIndicatorCard
+                  selectedDashboardIndicator={selectedDashboardIndicator}
+                  indicatorHistoryRows={indicatorHistoryRows}
+                  processValueAxisLabel={processValueAxisLabel}
+                />
+              )}
+
               <div className="dashboard-process-grid premium-process-grid">
-                <section className="chart-card premium-chart-card">
+                <section
+                  className="chart-card premium-chart-card"
+                  style={{
+                    borderRadius: 24,
+                    border: `1px solid ${CHART_COLORS.cardBorder}`,
+                    boxShadow: CHART_COLORS.cardShadow,
+                    background: "#ffffff",
+                  }}
+                >
                   <div
                     className="subsection-title"
                     style={{
@@ -1839,7 +2705,15 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   )}
                 </section>
 
-                <section className="chart-card premium-chart-card donut-card">
+                <section
+                  className="chart-card premium-chart-card donut-card"
+                  style={{
+                    borderRadius: 24,
+                    border: `1px solid ${CHART_COLORS.cardBorder}`,
+                    boxShadow: CHART_COLORS.cardShadow,
+                    background: "#ffffff",
+                  }}
+                >
                   <div className="subsection-title">Distribución del proceso</div>
                   <div className="chart-container executive-chart">
                     <ResponsiveContainer width="100%" height="100%">
@@ -1851,16 +2725,13 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                           outerRadius={90}
                           innerRadius={56}
                           paddingAngle={4}
-                          cornerRadius={8}
+                          cornerRadius={10}
                           label={({ name, percentage }) =>
                             `${name}: ${percentage}%`
                           }
                         >
-                          {dashboardPieData.map((entry, index) => (
-                            <Cell
-                              key={entry.name}
-                              fill={PIE_COLORS[index % PIE_COLORS.length]}
-                            />
+                          {dashboardPieData.map((entry) => (
+                            <Cell key={entry.name} fill={entry.fill} />
                           ))}
                         </Pie>
                         <Tooltip
@@ -1873,7 +2744,15 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   </div>
                 </section>
 
-                <section className="chart-card premium-chart-card full-span">
+                <section
+                  className="chart-card premium-chart-card full-span"
+                  style={{
+                    borderRadius: 24,
+                    border: `1px solid ${CHART_COLORS.cardBorder}`,
+                    boxShadow: CHART_COLORS.cardShadow,
+                    background: "#ffffff",
+                  }}
+                >
                   <div className="subsection-title">Comparativo de indicadores</div>
                   <div className="chart-container large-executive-chart">
                     <ResponsiveContainer width="100%" height="100%">
@@ -1902,9 +2781,11 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                         <Bar
                           dataKey="general"
                           name="Resultado"
-                          fill={CHART_COLORS.navy}
-                          radius={[8, 8, 0, 0]}
+                          radius={[10, 10, 0, 0]}
                         >
+                          {dashboardBarData.map((entry, index) => (
+                            <Cell key={`indicator-bar-${index}`} fill={entry.fill} />
+                          ))}
                           <LabelList
                             dataKey="general"
                             position="top"
@@ -1921,12 +2802,20 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   </div>
                 </section>
 
-                <section className="chart-card premium-chart-card full-span">
+                <section
+                  className="chart-card premium-chart-card full-span"
+                  style={{
+                    borderRadius: 24,
+                    border: `1px solid ${CHART_COLORS.cardBorder}`,
+                    boxShadow: CHART_COLORS.cardShadow,
+                    background: "#ffffff",
+                  }}
+                >
                   <div className="subsection-title">Pareto de impacto</div>
                   <div className="chart-container large-executive-chart">
                     <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart
-                        data={dashboardData.pareto.map((item) => ({
+                        data={(dashboardData.pareto || []).map((item) => ({
                           ...item,
                           shortName: formatCompactName(item.name, 24),
                         }))}
@@ -2011,73 +2900,116 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               <section className="executive-section">
                 <div className="subsection-title">Monitoreo por indicador</div>
                 <div className="indicator-summary-grid">
-                  {dashboardData.indicator_cards.map((item) => (
-                    <div
-                      key={item.indicator_id}
-                      className="indicator-summary-card clean-indicator-card"
-                    >
-                      <div className="indicator-card-head">
-                        <div>
-                          <div className="indicator-code">{item.code}</div>
-                          <div className="indicator-name">{item.name}</div>
+                  {(dashboardData.indicator_cards || [])
+                    .filter((item) =>
+                      isMatchingStatusFilter(
+                        normalizeStatus(item.status),
+                        dashboardFilter.status_filter
+                      )
+                    )
+                    .map((item) => (
+                      <div
+                        key={item.indicator_id}
+                        className="indicator-summary-card clean-indicator-card"
+                        style={{
+                          borderRadius: 22,
+                          border: `1px solid ${CHART_COLORS.cardBorder}`,
+                          boxShadow: CHART_COLORS.cardShadowSoft,
+                          background: "#ffffff",
+                        }}
+                      >
+                        <div className="indicator-card-head">
+                          <div>
+                            <div className="indicator-code">
+                              {safeDisplay(item.code)}
+                            </div>
+                            <div className="indicator-name">
+                              {safeDisplay(item.name)}
+                            </div>
+                          </div>
+                          <span
+                            className={`status ${normalizeStatus(item.status)}`}
+                            style={{
+                              ...getStatusPillStyles(item.status),
+                              borderRadius: 999,
+                              padding: "5px 10px",
+                              display: "inline-flex",
+                              fontWeight: 800,
+                              fontSize: 11,
+                            }}
+                          >
+                            {getStatusLabel(item.status)}
+                          </span>
                         </div>
-                        <span className={`status ${item.status}`}>
-                          {item.status}
-                        </span>
-                      </div>
 
-                      <div className="indicator-main-value">
-                        {formatPercent(item.general)}
-                      </div>
+                        <div className="indicator-main-value">
+                          {safeDisplay(item.general, formatPercent)}
+                        </div>
 
-                      <div className="indicator-rules compact-rules">
-                        <div>
-                          Frecuencia:{" "}
-                          <strong>{formatFrequencyLabel(item.frequency)}</strong>
-                        </div>
-                        <div>
-                          Captura:{" "}
-                          <strong>
-                            {formatCaptureModeLabel(item.capture_mode)}
-                          </strong>
-                        </div>
-                        <div>
-                          Meta:{" "}
-                          {formatRule(
-                            item.target_operator,
-                            item.target_value,
-                            item.unit
-                          )}
-                        </div>
-                        <div>
-                          Warning:{" "}
-                          {formatRule(
-                            item.warning_operator,
-                            item.warning_value,
-                            item.unit
-                          )}
-                        </div>
-                        <div>
-                          Critical:{" "}
-                          {formatRule(
-                            item.critical_operator,
-                            item.critical_value,
-                            item.unit
-                          )}
-                        </div>
-                        <div>
-                          Tendencia:{" "}
-                          <strong>
-                            {item.direction === "up"
-                              ? "Al alza"
-                              : item.direction === "down"
-                              ? "A la baja"
-                              : "Estable"}
-                          </strong>
+                        <div className="indicator-rules compact-rules">
+                          <div>
+                            Frecuencia:{" "}
+                            <strong>
+                              {safeDisplay(
+                                item.frequency
+                                  ? formatFrequencyLabel(item.frequency)
+                                  : null
+                              )}
+                            </strong>
+                          </div>
+                          <div>
+                            Captura:{" "}
+                            <strong>
+                              {safeDisplay(
+                                item.capture_mode
+                                  ? formatCaptureModeLabel(item.capture_mode)
+                                  : null
+                              )}
+                            </strong>
+                          </div>
+                          <div>
+                            Meta:{" "}
+                            {safeDisplay(
+                              formatRule(
+                                item.target_operator,
+                                item.target_value,
+                                item.unit
+                              )
+                            )}
+                          </div>
+                          <div>
+                            Warning:{" "}
+                            {safeDisplay(
+                              formatRule(
+                                item.warning_operator,
+                                item.warning_value,
+                                item.unit
+                              )
+                            )}
+                          </div>
+                          <div>
+                            Critical:{" "}
+                            {safeDisplay(
+                              formatRule(
+                                item.critical_operator,
+                                item.critical_value,
+                                item.unit
+                              )
+                            )}
+                          </div>
+                          <div>
+                            Tendencia:{" "}
+                            <strong>
+                              {item.direction === "up"
+                                ? "Al alza"
+                                : item.direction === "down"
+                                ? "A la baja"
+                                : "Estable"}
+                            </strong>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               </section>
 
@@ -2086,15 +3018,25 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   Micro tendencias por indicador
                 </div>
                 <div className="indicator-trend-grid">
-                  {dashboardData.indicator_trends.map((item) => (
+                  {(dashboardData.indicator_trends || []).map((item) => (
                     <div
                       key={item.indicator_id}
                       className="indicator-trend-card clean-trend-card"
+                      style={{
+                        borderRadius: 22,
+                        border: `1px solid ${CHART_COLORS.cardBorder}`,
+                        boxShadow: CHART_COLORS.cardShadowSoft,
+                        background: "#ffffff",
+                      }}
                     >
                       <div className="indicator-trend-head">
                         <div>
-                          <div className="indicator-code">{item.code}</div>
-                          <div className="indicator-name">{item.name}</div>
+                          <div className="indicator-code">
+                            {safeDisplay(item.code)}
+                          </div>
+                          <div className="indicator-name">
+                            {safeDisplay(item.name)}
+                          </div>
                         </div>
                         <span className={`trend-badge ${item.direction}`}>
                           {item.direction === "up"
@@ -2106,12 +3048,12 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       </div>
 
                       <div className="indicator-main-value small">
-                        {formatPercent(item.last_value)}
+                        {safeDisplay(item.last_value, formatPercent)}
                       </div>
 
                       <div className="mini-chart">
                         <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={item.points}>
+                          <LineChart data={item.points || []}>
                             <CartesianGrid
                               strokeDasharray="3 3"
                               stroke={CHART_COLORS.grid}
@@ -2162,10 +3104,10 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                 width: "min(1200px, 96vw)",
                 height: "min(760px, 92vh)",
                 background: "#ffffff",
-                borderRadius: 24,
+                borderRadius: 26,
                 boxShadow: "0 30px 80px rgba(10, 28, 48, 0.28)",
                 border: "1px solid #d7e3f1",
-                padding: 20,
+                padding: 22,
                 display: "flex",
                 flexDirection: "column",
                 gap: 14,
@@ -2200,8 +3142,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       lineHeight: 1.1,
                     }}
                   >
-                    {selectedDashboardIndicator?.code} -{" "}
-                    {selectedDashboardIndicator?.name}
+                    {safeDisplay(selectedDashboardIndicator?.code)} -{" "}
+                    {safeDisplay(selectedDashboardIndicator?.name)}
                   </h3>
                 </div>
 
