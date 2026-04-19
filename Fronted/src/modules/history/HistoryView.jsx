@@ -39,6 +39,20 @@ function getStableRowId(row, index) {
   return `row-${index}`;
 }
 
+function isBlank(value) {
+  return value === "" || value === null || value === undefined;
+}
+
+function toNullableNumber(value) {
+  if (isBlank(value)) return null;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function toSafeText(value) {
+  return String(value ?? "").trim();
+}
+
 function buildEntityHistorySummary(records) {
   if (!records.length) {
     return {
@@ -108,7 +122,12 @@ function buildEntityHistorySummary(records) {
   };
 }
 
-export default function HistoryView({ accessLevel, processes, indicators, entities = [] }) {
+export default function HistoryView({
+  accessLevel,
+  processes,
+  indicators,
+  entities = [],
+}) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [historyResults, setHistoryResults] = useState([]);
@@ -138,7 +157,8 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
     );
   }, [historyFilter.indicator_id, indicators]);
 
-  const isEntityHistoryIndicator = selectedHistoryIndicator?.scope_type === "entity";
+  const isEntityHistoryIndicator =
+    selectedHistoryIndicator?.scope_type === "entity";
 
   function clearMessageSoon(text) {
     setMessage(text);
@@ -163,11 +183,7 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
       const name = String(row.entity_name || "").toLowerCase();
       const code = String(row.entity_code || "").toLowerCase();
       const type = String(row.entity_type || "").toLowerCase();
-      return (
-        name.includes(query) ||
-        code.includes(query) ||
-        type.includes(query)
-      );
+      return name.includes(query) || code.includes(query) || type.includes(query);
     });
   }, [entityMatrixRows, entityQuickFilter]);
 
@@ -181,7 +197,9 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
       };
 
       const selectedIndicator = filters.indicator_id
-        ? indicators.find((item) => String(item.id) === String(filters.indicator_id))
+        ? indicators.find(
+            (item) => String(item.id) === String(filters.indicator_id)
+          )
         : null;
 
       if (selectedIndicator?.scope_type === "entity") {
@@ -211,7 +229,8 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
           .filter((item) => {
             if (filters.day) {
               return (
-                Number(String(item.record_date).slice(8, 10)) === Number(filters.day)
+                Number(String(item.record_date).slice(8, 10)) ===
+                Number(filters.day)
               );
             }
             return true;
@@ -258,11 +277,16 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
             ) {
               const criticalValue = Number(selectedIndicator.critical_value);
               if (
-                (selectedIndicator.critical_operator === ">" && general > criticalValue) ||
-                (selectedIndicator.critical_operator === ">=" && general >= criticalValue) ||
-                (selectedIndicator.critical_operator === "<" && general < criticalValue) ||
-                (selectedIndicator.critical_operator === "<=" && general <= criticalValue) ||
-                (selectedIndicator.critical_operator === "=" && general === criticalValue)
+                (selectedIndicator.critical_operator === ">" &&
+                  general > criticalValue) ||
+                (selectedIndicator.critical_operator === ">=" &&
+                  general >= criticalValue) ||
+                (selectedIndicator.critical_operator === "<" &&
+                  general < criticalValue) ||
+                (selectedIndicator.critical_operator === "<=" &&
+                  general <= criticalValue) ||
+                (selectedIndicator.critical_operator === "=" &&
+                  general === criticalValue)
               ) {
                 status = "critical";
               }
@@ -276,11 +300,16 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
             ) {
               const warningValue = Number(selectedIndicator.warning_value);
               if (
-                (selectedIndicator.warning_operator === ">" && general > warningValue) ||
-                (selectedIndicator.warning_operator === ">=" && general >= warningValue) ||
-                (selectedIndicator.warning_operator === "<" && general < warningValue) ||
-                (selectedIndicator.warning_operator === "<=" && general <= warningValue) ||
-                (selectedIndicator.warning_operator === "=" && general === warningValue)
+                (selectedIndicator.warning_operator === ">" &&
+                  general > warningValue) ||
+                (selectedIndicator.warning_operator === ">=" &&
+                  general >= warningValue) ||
+                (selectedIndicator.warning_operator === "<" &&
+                  general < warningValue) ||
+                (selectedIndicator.warning_operator === "<=" &&
+                  general <= warningValue) ||
+                (selectedIndicator.warning_operator === "=" &&
+                  general === warningValue)
               ) {
                 status = "warning";
               }
@@ -442,11 +471,11 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
         indicator_id: Number(historyFilter.indicator_id),
         rows: monthMatrixRows.map((row) => ({
           record_date: row.record_date,
-          single_value: row.single_value === "" ? null : Number(row.single_value),
-          shift_a: row.shift_a === "" ? null : Number(row.shift_a),
-          shift_b: row.shift_b === "" ? null : Number(row.shift_b),
-          shift_c: row.shift_c === "" ? null : Number(row.shift_c),
-          observation: row.observation || "",
+          single_value: toNullableNumber(row.single_value),
+          shift_a: toNullableNumber(row.shift_a),
+          shift_b: toNullableNumber(row.shift_b),
+          shift_c: toNullableNumber(row.shift_c),
+          observation: toSafeText(row.observation),
         })),
       });
 
@@ -588,8 +617,17 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
       for (const row of entityMatrixRows) {
         const recordDate = String(row.record_date || "").slice(0, 10);
         const entityId = Number(row.entity_id);
+        const numericValue = toNullableNumber(row.value);
+        const observation = toSafeText(row.observation);
 
         if (!recordDate || !entityId) continue;
+
+        const hasExplicitValue = !isBlank(row.value);
+        const hasObservation = !!observation;
+
+        if (!hasExplicitValue && !hasObservation) {
+          continue;
+        }
 
         if (!groupedByDate[recordDate]) {
           groupedByDate[recordDate] = [];
@@ -597,11 +635,8 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
 
         groupedByDate[recordDate].push({
           entity_id: entityId,
-          value:
-            row.value === "" || row.value === null || row.value === undefined
-              ? null
-              : Number(row.value),
-          observation: row.observation || "",
+          value: numericValue,
+          observation,
         });
       }
 
@@ -644,10 +679,7 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
       const entityName = String(row.entity_name || "").trim();
       if (!entityId || !entityName) return acc;
 
-      const numericValue =
-        row.value === "" || row.value === null || row.value === undefined
-          ? 0
-          : Number(row.value);
+      const numericValue = toNullableNumber(row.value) ?? 0;
 
       if (!acc[entityId]) {
         acc[entityId] = {
@@ -660,7 +692,7 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
         };
       }
 
-      acc[entityId].accumulated += Number.isNaN(numericValue) ? 0 : numericValue;
+      acc[entityId].accumulated += numericValue;
       acc[entityId].records += 1;
       return acc;
     }, {});
@@ -960,7 +992,7 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
                           <input
                             type="number"
                             step="0.01"
-                            value={row.shift_a}
+                            value={row.shift_a ?? ""}
                             onChange={(e) =>
                               updateMonthMatrixRow(index, "shift_a", e.target.value)
                             }
@@ -971,7 +1003,7 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
                           <input
                             type="number"
                             step="0.01"
-                            value={row.shift_b}
+                            value={row.shift_b ?? ""}
                             onChange={(e) =>
                               updateMonthMatrixRow(index, "shift_b", e.target.value)
                             }
@@ -982,7 +1014,7 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
                           <input
                             type="number"
                             step="0.01"
-                            value={row.shift_c}
+                            value={row.shift_c ?? ""}
                             onChange={(e) =>
                               updateMonthMatrixRow(index, "shift_c", e.target.value)
                             }
@@ -994,7 +1026,7 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
 
                     <td>
                       <input
-                        value={row.observation}
+                        value={row.observation ?? ""}
                         onChange={(e) =>
                           updateMonthMatrixRow(index, "observation", e.target.value)
                         }
@@ -1090,10 +1122,10 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
                       <input value={row.entity_type || "-"} disabled />
                     </td>
                     <td>
-                      <input value={row.entity_name} disabled />
+                      <input value={row.entity_name ?? ""} disabled />
                     </td>
                     <td>
-                      <input value={row.day} disabled />
+                      <input value={row.day ?? ""} disabled />
                     </td>
                     <td>
                       <input value={row.target_value ?? 0} disabled />
@@ -1102,7 +1134,7 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
                       <input
                         type="number"
                         step="0.01"
-                        value={row.value}
+                        value={row.value ?? ""}
                         onChange={(e) =>
                           updateEntityMatrix(
                             entityMatrixRows.findIndex(
@@ -1117,7 +1149,7 @@ export default function HistoryView({ accessLevel, processes, indicators, entiti
                     </td>
                     <td>
                       <input
-                        value={row.observation}
+                        value={row.observation ?? ""}
                         onChange={(e) =>
                           updateEntityMatrix(
                             entityMatrixRows.findIndex(
