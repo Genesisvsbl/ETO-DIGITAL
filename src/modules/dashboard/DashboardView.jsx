@@ -434,7 +434,7 @@ function filterHistoryRowsByPeriod(historyRows, filter) {
   const period = String(filter?.period || "month");
 
   const sorted = [...rows].sort(
-    (a, b) => new Date(a.record_date) - new Date(b.record_date)
+    (a, b) => new Date(getSafeIsoDate(a.record_date)) - new Date(getSafeIsoDate(b.record_date))
   );
 
   if (period === "day") {
@@ -442,7 +442,7 @@ function filterHistoryRowsByPeriod(historyRows, filter) {
     if (!selectedDay) return sorted;
 
     return sorted.filter((row) => {
-      const day = Number(String(row.record_date || "").slice(8, 10));
+      const day = Number(getSafeIsoDate(row.record_date).slice(8, 10));
       return day === selectedDay;
     });
   }
@@ -457,7 +457,7 @@ function filterHistoryRowsByPeriod(historyRows, filter) {
     if (!range) return sorted;
 
     return sorted.filter((row) => {
-      const day = Number(String(row.record_date || "").slice(8, 10));
+      const day = Number(getSafeIsoDate(row.record_date).slice(8, 10));
       return day >= range.start && day <= range.end;
     });
   }
@@ -504,7 +504,7 @@ function getLatestHistoryRecord(historyRows) {
   if (!rows.length) return null;
 
   return [...rows].sort(
-    (a, b) => new Date(b.record_date) - new Date(a.record_date)
+    (a, b) => new Date(getSafeIsoDate(b.record_date)) - new Date(getSafeIsoDate(a.record_date))
   )[0];
 }
 
@@ -513,7 +513,7 @@ function getPreviousHistoryRecord(historyRows) {
   if (rows.length < 2) return null;
 
   const sorted = [...rows].sort(
-    (a, b) => new Date(b.record_date) - new Date(a.record_date)
+    (a, b) => new Date(getSafeIsoDate(b.record_date)) - new Date(getSafeIsoDate(a.record_date))
   );
 
   return sorted[1] || null;
@@ -522,9 +522,8 @@ function getPreviousHistoryRecord(historyRows) {
 function buildDailySeriesFromHistory(historyRows, filter) {
   const filteredRows = filterHistoryRowsByPeriod(historyRows, filter);
 
-  return filteredRows.map((item, index) => {
+  return filteredRows.map((item) => {
     const recordDate = getSafeIsoDate(item.record_date);
-    const day = Number(recordDate.slice(8, 10)) || index + 1;
     const realValue = getMeasuredValueFromHistoryRow(item);
     const general = normalizeGeneralToPercent(item.general || 0);
     const status = normalizeStatus(item.status);
@@ -533,7 +532,6 @@ function buildDailySeriesFromHistory(historyRows, filter) {
     return {
       rawDate: recordDate,
       date: recordDate,
-      day,
       xLabel: recordDate,
       shortLabel: formatRealDateLabel(recordDate),
       value: Number.isFinite(realValue) ? realValue : 0,
@@ -755,7 +753,7 @@ function TrendLegend({
       </span>
 
       <span>
-        <strong>Barras:</strong> valor real por día
+        <strong>Barras:</strong> valor real por fecha histórica
       </span>
 
       <span>
@@ -797,7 +795,6 @@ function TrendLegend({
 function CustomDailyTooltip({
   active,
   payload,
-  label,
   valueAxisLabel,
   selectedDashboardIndicator,
 }) {
@@ -821,7 +818,7 @@ function CustomDailyTooltip({
   );
 
   const pillStyles = getStatusPillStyles(row.status);
-  const formattedDate = formatRealDateLabel(row.rawDate || row.date || label);
+  const formattedDate = formatRealDateLabel(row.rawDate || row.date);
 
   return (
     <div
@@ -1368,6 +1365,7 @@ function renderTrendChart({
             interval={0}
             angle={0}
             textAnchor="middle"
+            minTickGap={0}
             height={expanded ? 46 : 40}
             tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
             tickFormatter={(value) => formatRealDateLabel(value)}
@@ -1502,12 +1500,15 @@ function renderTrendChart({
     <ResponsiveContainer width="100%" height="100%">
       <LineChart
         data={(dashboardData?.trend || [])
-          .map((item) => ({
-            ...item,
-            rawDate: getSafeIsoDate(item.label),
-            xLabel: getSafeIsoDate(item.label),
-            shortLabel: formatRealDateLabel(item.label),
-          }))
+          .map((item) => {
+            const realDate = getSafeIsoDate(item.label);
+            return {
+              ...item,
+              rawDate: realDate,
+              xLabel: realDate,
+              shortLabel: formatRealDateLabel(realDate),
+            };
+          })
           .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate))}
         margin={{ top: 10, right: 20, left: 0, bottom: 50 }}
       >
@@ -1524,9 +1525,7 @@ function renderTrendChart({
         <YAxis tickFormatter={(value) => `${value}%`} />
         <Tooltip
           formatter={(value) => formatPercent(value)}
-          labelFormatter={(label, payload) =>
-            formatRealDateLabel(payload?.[0]?.payload?.rawDate || label)
-          }
+          labelFormatter={(label) => formatRealDateLabel(label)}
         />
         <Line
           type="monotone"
@@ -1784,11 +1783,19 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     return Math.max(420, rows * 48);
   }, [entityDashboardBarData]);
 
+  const filteredIndicatorHistoryRows = useMemo(() => {
+    if (!isStandardIndicatorSelected) return [];
+    return filterHistoryRowsByPeriod(indicatorHistoryRows, dashboardFilter);
+  }, [indicatorHistoryRows, dashboardFilter, isStandardIndicatorSelected]);
+
   const processDailySeriesRaw = useMemo(() => {
     if (!dashboardData || dashboardData?.is_entity_dashboard) return [];
 
-    if (isStandardIndicatorSelected && indicatorHistoryRows.length) {
-      return buildDailySeriesFromHistory(indicatorHistoryRows, dashboardFilter);
+    if (isStandardIndicatorSelected && filteredIndicatorHistoryRows.length) {
+      return buildDailySeriesFromHistory(filteredIndicatorHistoryRows, {
+        ...dashboardFilter,
+        period: "month",
+      });
     }
 
     return (dashboardData?.trend || [])
@@ -1816,7 +1823,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate));
   }, [
     dashboardData,
-    indicatorHistoryRows,
+    filteredIndicatorHistoryRows,
     isStandardIndicatorSelected,
     dashboardFilter,
   ]);
@@ -2685,7 +2692,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               {isStandardIndicatorSelected && (
                 <ExecutiveIndicatorCard
                   selectedDashboardIndicator={selectedDashboardIndicator}
-                  indicatorHistoryRows={indicatorHistoryRows}
+                  indicatorHistoryRows={filteredIndicatorHistoryRows}
                   processValueAxisLabel={processValueAxisLabel}
                 />
               )}
