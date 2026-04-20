@@ -161,6 +161,18 @@ function formatChartNumber(value) {
   return numeric.toFixed(2);
 }
 
+function getSafeIsoDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return raw.slice(0, 10);
+}
+
+function formatRealDateLabel(value) {
+  const iso = getSafeIsoDate(value);
+  if (!iso) return "N/D";
+  return formatShortDate(iso);
+}
+
 function getIndicatorTargetLineValue(indicator) {
   if (!indicator) return null;
   return getSafeNumericValue(indicator.target_value);
@@ -511,7 +523,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
   const filteredRows = filterHistoryRowsByPeriod(historyRows, filter);
 
   return filteredRows.map((item, index) => {
-    const recordDate = String(item.record_date || "").slice(0, 10);
+    const recordDate = getSafeIsoDate(item.record_date);
     const day = Number(recordDate.slice(8, 10)) || index + 1;
     const realValue = getMeasuredValueFromHistoryRow(item);
     const general = normalizeGeneralToPercent(item.general || 0);
@@ -519,10 +531,11 @@ function buildDailySeriesFromHistory(historyRows, filter) {
     const observation = String(item.observation || "").trim();
 
     return {
+      rawDate: recordDate,
       date: recordDate,
       day,
       xLabel: recordDate,
-      shortLabel: formatShortDate(recordDate),
+      shortLabel: formatRealDateLabel(recordDate),
       value: Number.isFinite(realValue) ? realValue : 0,
       originalValue: realValue,
       trendValue: Number.isFinite(realValue) ? realValue : 0,
@@ -808,6 +821,7 @@ function CustomDailyTooltip({
   );
 
   const pillStyles = getStatusPillStyles(row.status);
+  const formattedDate = formatRealDateLabel(row.rawDate || row.date || label);
 
   return (
     <div
@@ -835,7 +849,7 @@ function CustomDailyTooltip({
             color: CHART_COLORS.text,
           }}
         >
-          {safeDisplay(row.date || label)}
+          {formattedDate}
         </div>
 
         <span
@@ -862,7 +876,7 @@ function CustomDailyTooltip({
         }}
       >
         <div>
-          <strong>Fecha:</strong> {safeDisplay(row.date || label)}
+          <strong>Fecha:</strong> {formattedDate}
         </div>
         <div>
           <strong>Valor:</strong>{" "}
@@ -1124,7 +1138,7 @@ function ExecutiveIndicatorCard({
                   color: CHART_COLORS.text,
                 }}
               >
-                {safeDisplay(latestRecord?.record_date)}
+                {safeDisplay(latestRecord?.record_date, formatRealDateLabel)}
               </div>
             </div>
 
@@ -1356,11 +1370,11 @@ function renderTrendChart({
             textAnchor="middle"
             height={expanded ? 46 : 40}
             tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
-            tickFormatter={(value) => formatShortDate(value)}
+            tickFormatter={(value) => formatRealDateLabel(value)}
             label={
               expanded
                 ? {
-                    value: "Día",
+                    value: "Fecha",
                     position: "insideBottom",
                     offset: -4,
                     fill: CHART_COLORS.text,
@@ -1456,7 +1470,7 @@ function renderTrendChart({
             maxBarSize={expanded ? 46 : 34}
           >
             {processDailySeries.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.fill || CHART_COLORS.ok} />
+              <Cell key={`cell-${entry.rawDate || index}`} fill={entry.fill || CHART_COLORS.ok} />
             ))}
             <LabelList content={<DailyValueTopLabel />} />
             <LabelList content={<ObservationMarkerLabel />} />
@@ -1487,29 +1501,31 @@ function renderTrendChart({
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart
-        data={dashboardData.trend.map((item, index) => ({
-          ...item,
-          xLabel: String(
-            Number(String(item.label || "").slice(8, 10)) || index + 1
-          ),
-          shortLabel: formatShortDate(item.label),
-        }))}
+        data={(dashboardData?.trend || [])
+          .map((item) => ({
+            ...item,
+            rawDate: getSafeIsoDate(item.label),
+            xLabel: getSafeIsoDate(item.label),
+            shortLabel: formatRealDateLabel(item.label),
+          }))
+          .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate))}
         margin={{ top: 10, right: 20, left: 0, bottom: 50 }}
       >
         <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
         <XAxis
-          dataKey="shortLabel"
+          dataKey="xLabel"
           interval={0}
           angle={0}
           textAnchor="middle"
           height={40}
           tick={{ fontSize: 11 }}
+          tickFormatter={(value) => formatRealDateLabel(value)}
         />
         <YAxis tickFormatter={(value) => `${value}%`} />
         <Tooltip
           formatter={(value) => formatPercent(value)}
           labelFormatter={(label, payload) =>
-            payload?.[0]?.payload?.label || label
+            formatRealDateLabel(payload?.[0]?.payload?.rawDate || label)
           }
         />
         <Line
@@ -1776,16 +1792,16 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     }
 
     return (dashboardData?.trend || [])
-      .map((item, index) => {
+      .map((item) => {
         const numericValue = Number(item.value || 0);
         const status = normalizeStatus(item.status || "ok");
+        const realDate = getSafeIsoDate(item.label);
+
         return {
-          date: item.label,
-          day: Number(String(item.label || "").slice(8, 10)) || index + 1,
-          xLabel: String(
-            Number(String(item.label || "").slice(8, 10)) || index + 1
-          ),
-          shortLabel: formatShortDate(item.label),
+          rawDate: realDate,
+          date: realDate,
+          xLabel: realDate,
+          shortLabel: formatRealDateLabel(realDate),
           value: Number.isFinite(numericValue) ? numericValue : 0,
           originalValue: Number.isFinite(numericValue) ? numericValue : null,
           trendValue: Number.isFinite(numericValue) ? numericValue : 0,
@@ -1797,7 +1813,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
           observationMarkerY: Number.isFinite(numericValue) ? numericValue : 0,
         };
       })
-      .sort((a, b) => new Date(a.date) - new Date(b.date));
+      .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate));
   }, [
     dashboardData,
     indicatorHistoryRows,
