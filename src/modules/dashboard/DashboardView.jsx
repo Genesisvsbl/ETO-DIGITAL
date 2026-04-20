@@ -175,7 +175,7 @@ function formatRealDateLabel(value) {
 function formatDayOnly(value) {
   const iso = getSafeIsoDate(value);
   if (!iso) return "";
-  return Number(iso.slice(8, 10));
+  return String(Number(iso.slice(8, 10)));
 }
 
 function formatDayMonth(value) {
@@ -563,6 +563,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
       rawDate: recordDate,
       date: recordDate,
       xLabel: formatDayOnly(recordDate),
+      fullDateLabel: formatDayMonth(recordDate),
       shortLabel: formatDayMonth(recordDate),
       value: Number.isFinite(realValue) ? realValue : 0,
       originalValue: realValue,
@@ -825,22 +826,21 @@ function TrendLegend({
 function CustomDailyTooltip({
   active,
   payload,
+  label,
   valueAxisLabel,
   selectedDashboardIndicator,
 }) {
   if (!active || !payload?.length) return null;
 
-  const row =
-    payload.find((item) => item?.payload)?.payload ||
-    payload[0]?.payload ||
-    {};
-
+  const row = payload?.[0]?.payload || {};
   const targetValue = getIndicatorTargetLineValue(selectedDashboardIndicator);
+
   const warningRule = formatRule(
     selectedDashboardIndicator?.warning_operator,
     selectedDashboardIndicator?.warning_value,
     selectedDashboardIndicator?.unit || valueAxisLabel
   );
+
   const criticalRule = formatRule(
     selectedDashboardIndicator?.critical_operator,
     selectedDashboardIndicator?.critical_value,
@@ -848,7 +848,10 @@ function CustomDailyTooltip({
   );
 
   const pillStyles = getStatusPillStyles(row.status);
-  const formattedDate = formatDayMonth(row.rawDate || row.date);
+
+  const formattedDate =
+    row.fullDateLabel ||
+    formatDayMonth(row.rawDate || row.date || label);
 
   return (
     <div
@@ -978,9 +981,7 @@ function ExecutiveIndicatorCard({
 
   const variationValue =
     latestMeasuredValue !== null &&
-    latestMeasuredValue !== undefined &&
-    previousMeasuredValue !== null &&
-    previousMeasuredValue !== undefined
+    previousMeasuredValue !== null
       ? Number(latestMeasuredValue) - Number(previousMeasuredValue)
       : null;
 
@@ -1371,10 +1372,12 @@ function renderTrendChart({
       processDailySeries,
       selectedDashboardIndicator
     );
+
     const backgroundBands = buildIndicatorBackgroundBands(
       selectedDashboardIndicator,
       yDomainMax
     );
+
     const targetLineValue =
       getIndicatorTargetLineValue(selectedDashboardIndicator);
 
@@ -1497,7 +1500,10 @@ function renderTrendChart({
             maxBarSize={expanded ? 46 : 34}
           >
             {processDailySeries.map((entry, index) => (
-              <Cell key={`cell-${entry.rawDate || index}`} fill={entry.fill || CHART_COLORS.ok} />
+              <Cell
+                key={`cell-${entry.rawDate || index}`}
+                fill={entry.fill || CHART_COLORS.ok}
+              />
             ))}
             <LabelList content={<DailyValueTopLabel />} />
             <LabelList content={<ObservationMarkerLabel />} />
@@ -1534,7 +1540,9 @@ function renderTrendChart({
             return {
               ...item,
               rawDate: realDate,
+              date: realDate,
               xLabel: formatDayOnly(realDate),
+              fullDateLabel: formatDayMonth(realDate),
               shortLabel: formatDayMonth(realDate),
             };
           })
@@ -1554,7 +1562,7 @@ function renderTrendChart({
         <Tooltip
           formatter={(value) => formatPercent(value)}
           labelFormatter={(label, payload) =>
-            formatDayMonth(payload?.[0]?.payload?.rawDate || label)
+            payload?.[0]?.payload?.fullDateLabel || label
           }
         />
         <Line
@@ -1835,6 +1843,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
           rawDate: realDate,
           date: realDate,
           xLabel: formatDayOnly(realDate),
+          fullDateLabel: formatDayMonth(realDate),
           shortLabel: formatDayMonth(realDate),
           value: Number.isFinite(numericValue) ? numericValue : 0,
           originalValue: Number.isFinite(numericValue) ? numericValue : null,
