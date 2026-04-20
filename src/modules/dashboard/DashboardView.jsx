@@ -54,6 +54,21 @@ const CHART_COLORS = {
   cardShadowSoft: "0 12px 30px rgba(17, 42, 74, 0.06)",
 };
 
+const MONTHS_ES = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+];
+
 function normalizeGeneralToPercent(value) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric)) return 0;
@@ -166,12 +181,6 @@ function getSafeIsoDate(value) {
   return raw.slice(0, 10);
 }
 
-function formatRealDateLabel(value) {
-  const iso = getSafeIsoDate(value);
-  if (!iso) return "N/D";
-  return iso;
-}
-
 function formatDayOnly(value) {
   const iso = getSafeIsoDate(value);
   if (!iso) return "";
@@ -183,24 +192,19 @@ function formatDayMonth(value) {
   if (!iso) return "N/D";
 
   const [, month, day] = iso.split("-");
-  const months = [
-    "enero",
-    "febrero",
-    "marzo",
-    "abril",
-    "mayo",
-    "junio",
-    "julio",
-    "agosto",
-    "septiembre",
-    "octubre",
-    "noviembre",
-    "diciembre",
-  ];
-
   const monthIndex = Number(month) - 1;
-  const monthName = months[monthIndex] || month;
+  const monthName = MONTHS_ES[monthIndex] || month;
   return `${day}-${monthName}`;
+}
+
+function buildIsoFromFilterDay(dayLabel, filter) {
+  const day = Number(dayLabel);
+  const year = Number(filter?.year);
+  const month = Number(filter?.month);
+
+  if (!day || !year || !month) return "";
+
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 function getIndicatorTargetLineValue(indicator) {
@@ -829,10 +833,23 @@ function CustomDailyTooltip({
   label,
   valueAxisLabel,
   selectedDashboardIndicator,
+  dashboardFilter,
 }) {
   if (!active || !payload?.length) return null;
 
-  const row = payload?.[0]?.payload || {};
+  const payloadRow =
+    payload.find((item) => item?.payload?.rawDate || item?.payload?.fullDateLabel)
+      ?.payload ||
+    payload.find((item) => item?.dataKey === "value")?.payload ||
+    payload.find((item) => item?.payload)?.payload ||
+    {};
+
+  const fallbackIso = buildIsoFromFilterDay(label, dashboardFilter);
+
+  const formattedDate =
+    payloadRow.fullDateLabel ||
+    formatDayMonth(payloadRow.rawDate || payloadRow.date || fallbackIso);
+
   const targetValue = getIndicatorTargetLineValue(selectedDashboardIndicator);
 
   const warningRule = formatRule(
@@ -847,11 +864,7 @@ function CustomDailyTooltip({
     selectedDashboardIndicator?.unit || valueAxisLabel
   );
 
-  const pillStyles = getStatusPillStyles(row.status);
-
-  const formattedDate =
-    row.fullDateLabel ||
-    formatDayMonth(row.rawDate || row.date || label);
+  const pillStyles = getStatusPillStyles(payloadRow.status);
 
   return (
     <div
@@ -892,7 +905,7 @@ function CustomDailyTooltip({
             letterSpacing: "0.06em",
           }}
         >
-          {getStatusLabel(row.status)}
+          {getStatusLabel(payloadRow.status)}
         </span>
       </div>
 
@@ -910,19 +923,21 @@ function CustomDailyTooltip({
         </div>
         <div>
           <strong>Valor:</strong>{" "}
-          {row.originalValue !== null && row.originalValue !== undefined
-            ? `${formatPlainNumber(Number(row.value || 0))} ${valueAxisLabel}`
+          {payloadRow.originalValue !== null && payloadRow.originalValue !== undefined
+            ? `${formatPlainNumber(Number(payloadRow.value || 0))} ${valueAxisLabel}`
             : "N/D"}
         </div>
         <div>
           <strong>Cumplimiento:</strong>{" "}
           {safeDisplay(
-            Number.isFinite(Number(row.general)) ? Number(row.general) : null,
+            Number.isFinite(Number(payloadRow.general))
+              ? Number(payloadRow.general)
+              : null,
             formatPercent
           )}
         </div>
         <div>
-          <strong>Estado:</strong> {safeDisplay(getStatusLabel(row.status))}
+          <strong>Estado:</strong> {safeDisplay(getStatusLabel(payloadRow.status))}
         </div>
         <div>
           <strong>Meta:</strong>{" "}
@@ -947,7 +962,7 @@ function CustomDailyTooltip({
           borderTop: "1px solid #e6eef8",
         }}
       >
-        <strong>Observación:</strong> {safeDisplay(row.observation)}
+        <strong>Observación:</strong> {safeDisplay(payloadRow.observation)}
       </div>
     </div>
   );
@@ -1365,6 +1380,7 @@ function renderTrendChart({
   dashboardData,
   processValueAxisLabel,
   selectedDashboardIndicator,
+  dashboardFilter,
   expanded = false,
 }) {
   if (isStandardIndicatorSelected) {
@@ -1488,6 +1504,7 @@ function renderTrendChart({
               <CustomDailyTooltip
                 valueAxisLabel={processValueAxisLabel}
                 selectedDashboardIndicator={selectedDashboardIndicator}
+                dashboardFilter={dashboardFilter}
               />
             }
           />
@@ -2780,6 +2797,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       dashboardData,
                       processValueAxisLabel,
                       selectedDashboardIndicator,
+                      dashboardFilter,
                       expanded: false,
                     })}
                   </div>
@@ -3264,6 +3282,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   dashboardData,
                   processValueAxisLabel,
                   selectedDashboardIndicator,
+                  dashboardFilter,
                   expanded: true,
                 })}
               </div>
