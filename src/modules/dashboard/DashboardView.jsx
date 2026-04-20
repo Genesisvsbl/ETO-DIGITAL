@@ -166,46 +166,41 @@ function getSafeIsoDate(value) {
   return raw.slice(0, 10);
 }
 
-function getHistoryRealDate(row) {
-  if (!row) return "";
-  return getSafeIsoDate(
-    row.record_date ||
-      row.real_date ||
-      row.history_date ||
-      row.capture_date ||
-      row.date
-  );
-}
-
-function formatFullDateLabel(value) {
+function formatRealDateLabel(value) {
   const iso = getSafeIsoDate(value);
   if (!iso) return "N/D";
   return iso;
 }
 
-function formatXAxisDateLabel(value) {
+function formatDayOnly(value) {
+  const iso = getSafeIsoDate(value);
+  if (!iso) return "";
+  return Number(iso.slice(8, 10));
+}
+
+function formatDayMonth(value) {
   const iso = getSafeIsoDate(value);
   if (!iso) return "N/D";
 
-  const [year, month, day] = iso.split("-");
-  const monthNames = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
+  const [, month, day] = iso.split("-");
+  const months = [
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
   ];
 
   const monthIndex = Number(month) - 1;
-  const monthLabel = monthNames[monthIndex] || month;
-  return `${day}-${monthLabel}`;
+  const monthName = months[monthIndex] || month;
+  return `${day}-${monthName}`;
 }
 
 function getIndicatorTargetLineValue(indicator) {
@@ -469,8 +464,7 @@ function filterHistoryRowsByPeriod(historyRows, filter) {
   const period = String(filter?.period || "month");
 
   const sorted = [...rows].sort(
-    (a, b) =>
-      new Date(getHistoryRealDate(a)) - new Date(getHistoryRealDate(b))
+    (a, b) => new Date(getSafeIsoDate(a.record_date)) - new Date(getSafeIsoDate(b.record_date))
   );
 
   if (period === "day") {
@@ -478,7 +472,7 @@ function filterHistoryRowsByPeriod(historyRows, filter) {
     if (!selectedDay) return sorted;
 
     return sorted.filter((row) => {
-      const day = Number(getHistoryRealDate(row).slice(8, 10));
+      const day = Number(getSafeIsoDate(row.record_date).slice(8, 10));
       return day === selectedDay;
     });
   }
@@ -493,7 +487,7 @@ function filterHistoryRowsByPeriod(historyRows, filter) {
     if (!range) return sorted;
 
     return sorted.filter((row) => {
-      const day = Number(getHistoryRealDate(row).slice(8, 10));
+      const day = Number(getSafeIsoDate(row.record_date).slice(8, 10));
       return day >= range.start && day <= range.end;
     });
   }
@@ -540,8 +534,7 @@ function getLatestHistoryRecord(historyRows) {
   if (!rows.length) return null;
 
   return [...rows].sort(
-    (a, b) =>
-      new Date(getHistoryRealDate(b)) - new Date(getHistoryRealDate(a))
+    (a, b) => new Date(getSafeIsoDate(b.record_date)) - new Date(getSafeIsoDate(a.record_date))
   )[0];
 }
 
@@ -550,8 +543,7 @@ function getPreviousHistoryRecord(historyRows) {
   if (rows.length < 2) return null;
 
   const sorted = [...rows].sort(
-    (a, b) =>
-      new Date(getHistoryRealDate(b)) - new Date(getHistoryRealDate(a))
+    (a, b) => new Date(getSafeIsoDate(b.record_date)) - new Date(getSafeIsoDate(a.record_date))
   );
 
   return sorted[1] || null;
@@ -561,7 +553,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
   const filteredRows = filterHistoryRowsByPeriod(historyRows, filter);
 
   return filteredRows.map((item) => {
-    const recordDate = getHistoryRealDate(item);
+    const recordDate = getSafeIsoDate(item.record_date);
     const realValue = getMeasuredValueFromHistoryRow(item);
     const general = normalizeGeneralToPercent(item.general || 0);
     const status = normalizeStatus(item.status);
@@ -570,9 +562,8 @@ function buildDailySeriesFromHistory(historyRows, filter) {
     return {
       rawDate: recordDate,
       date: recordDate,
-      xLabel: recordDate,
-      shortLabel: formatXAxisDateLabel(recordDate),
-      fullDateLabel: formatFullDateLabel(recordDate),
+      xLabel: formatDayOnly(recordDate),
+      shortLabel: formatDayMonth(recordDate),
       value: Number.isFinite(realValue) ? realValue : 0,
       originalValue: realValue,
       trendValue: Number.isFinite(realValue) ? realValue : 0,
@@ -857,7 +848,7 @@ function CustomDailyTooltip({
   );
 
   const pillStyles = getStatusPillStyles(row.status);
-  const formattedDate = formatFullDateLabel(row.rawDate || row.date);
+  const formattedDate = formatDayMonth(row.rawDate || row.date);
 
   return (
     <div
@@ -1174,7 +1165,7 @@ function ExecutiveIndicatorCard({
                   color: CHART_COLORS.text,
                 }}
               >
-                {safeDisplay(getHistoryRealDate(latestRecord), formatFullDateLabel)}
+                {safeDisplay(latestRecord?.record_date, formatDayMonth)}
               </div>
             </div>
 
@@ -1407,7 +1398,6 @@ function renderTrendChart({
             minTickGap={0}
             height={expanded ? 46 : 40}
             tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
-            tickFormatter={(value) => formatXAxisDateLabel(value)}
             label={
               expanded
                 ? {
@@ -1544,8 +1534,8 @@ function renderTrendChart({
             return {
               ...item,
               rawDate: realDate,
-              xLabel: realDate,
-              shortLabel: formatXAxisDateLabel(realDate),
+              xLabel: formatDayOnly(realDate),
+              shortLabel: formatDayMonth(realDate),
             };
           })
           .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate))}
@@ -1559,12 +1549,13 @@ function renderTrendChart({
           textAnchor="middle"
           height={40}
           tick={{ fontSize: 11 }}
-          tickFormatter={(value) => formatXAxisDateLabel(value)}
         />
         <YAxis tickFormatter={(value) => `${value}%`} />
         <Tooltip
           formatter={(value) => formatPercent(value)}
-          labelFormatter={(label) => formatFullDateLabel(label)}
+          labelFormatter={(label, payload) =>
+            formatDayMonth(payload?.[0]?.payload?.rawDate || label)
+          }
         />
         <Line
           type="monotone"
@@ -1843,9 +1834,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
         return {
           rawDate: realDate,
           date: realDate,
-          xLabel: realDate,
-          shortLabel: formatXAxisDateLabel(realDate),
-          fullDateLabel: formatFullDateLabel(realDate),
+          xLabel: formatDayOnly(realDate),
+          shortLabel: formatDayMonth(realDate),
           value: Number.isFinite(numericValue) ? numericValue : 0,
           originalValue: Number.isFinite(numericValue) ? numericValue : null,
           trendValue: Number.isFinite(numericValue) ? numericValue : 0,
