@@ -314,9 +314,7 @@ function buildIndicatorBackgroundBands(indicator, yDomainMax) {
     }
   }
 
-  return segments
-    .filter(Boolean)
-    .sort((a, b) => a.priority - b.priority);
+  return segments.filter(Boolean).sort((a, b) => a.priority - b.priority);
 }
 
 function getMeasuredValueFromHistoryRow(row) {
@@ -524,6 +522,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
       date: recordDate,
       day,
       xLabel: String(day),
+      shortLabel: String(day),
       fullshortLabel: String(day),
       value: Number.isFinite(realValue) ? realValue : 0,
       originalValue: realValue,
@@ -1253,29 +1252,25 @@ function ExecutiveIndicatorCard({
 
             <MetricMiniCard
               title="Warning rule"
-              value={
-                safeDisplay(
-                  formatRule(
-                    selectedDashboardIndicator.warning_operator,
-                    selectedDashboardIndicator.warning_value,
-                    selectedDashboardIndicator.unit || processValueAxisLabel
-                  )
+              value={safeDisplay(
+                formatRule(
+                  selectedDashboardIndicator.warning_operator,
+                  selectedDashboardIndicator.warning_value,
+                  selectedDashboardIndicator.unit || processValueAxisLabel
                 )
-              }
+              )}
               tone="neutral"
             />
 
             <MetricMiniCard
               title="Critical rule"
-              value={
-                safeDisplay(
-                  formatRule(
-                    selectedDashboardIndicator.critical_operator,
-                    selectedDashboardIndicator.critical_value,
-                    selectedDashboardIndicator.unit || processValueAxisLabel
-                  )
+              value={safeDisplay(
+                formatRule(
+                  selectedDashboardIndicator.critical_operator,
+                  selectedDashboardIndicator.critical_value,
+                  selectedDashboardIndicator.unit || processValueAxisLabel
                 )
-              }
+              )}
               tone="neutral"
             />
           </div>
@@ -1503,7 +1498,7 @@ function renderTrendChart({
       >
         <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
         <XAxis
-          dataKey="xLabel"
+          dataKey="shortLabel"
           interval={0}
           angle={0}
           textAnchor="middle"
@@ -1726,11 +1721,25 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
   }, [dashboardData, dashboardFilter.status_filter]);
 
   const globalRankingData = useMemo(() => {
-    return (dashboardOverview?.process_ranking || []).map((item) => ({
-      ...item,
-      label: `${Number(item.value).toFixed(2)}%`,
-    }));
-  }, [dashboardOverview]);
+    return (dashboardOverview?.process_ranking || [])
+      .map((item) => {
+        const value = Number(item.value || 0);
+
+        let derivedStatus = "ok";
+        if (value < 60) derivedStatus = "critical";
+        else if (value < 80) derivedStatus = "warning";
+
+        return {
+          ...item,
+          value,
+          status: normalizeStatus(item.status || derivedStatus),
+          label: `${value.toFixed(2)}%`,
+        };
+      })
+      .filter((item) =>
+        isMatchingStatusFilter(item.status, dashboardFilter.status_filter)
+      );
+  }, [dashboardOverview, dashboardFilter.status_filter]);
 
   const entityDashboardBarData = useMemo(() => {
     if (!dashboardData?.is_entity_dashboard || !dashboardData?.ranking?.length) {
@@ -2116,7 +2125,6 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
           </div>
         </div>
       </form>
-
       {dashboardOverview && (
         <>
           <section className="executive-kpi-grid clean-kpis">
@@ -2245,24 +2253,45 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
           <section className="dashboard-process-panel">
             <div className="subsection-title">Vista ejecutiva por proceso</div>
             <div className="process-overview-grid compact-process-grid">
-              {(dashboardOverview.process_cards || []).map((item, index) => (
-                <div
-                  key={item.process_name}
-                  className="process-card executive-process-card clean-process-card"
-                  style={{
-                    borderRadius: 22,
-                    border: `1px solid ${CHART_COLORS.cardBorder}`,
-                    boxShadow: CHART_COLORS.cardShadowSoft,
-                    background: "#ffffff",
-                  }}
-                >
-                  <div className="process-rank-chip">#{index + 1}</div>
-                  <div className="process-card-title">{safeDisplay(item.process_name)}</div>
-                  <div className="process-card-value big-percent">
-                    {safeDisplay(item.average_general, formatPercent)}
+              {(dashboardOverview.process_cards || [])
+                .map((item) => {
+                  const value = Number(item.average_general || 0);
+
+                  let derivedStatus = "ok";
+                  if (value < 60) derivedStatus = "critical";
+                  else if (value < 80) derivedStatus = "warning";
+
+                  return {
+                    ...item,
+                    status: normalizeStatus(item.status || derivedStatus),
+                  };
+                })
+                .filter((item) =>
+                  isMatchingStatusFilter(
+                    item.status,
+                    dashboardFilter.status_filter
+                  )
+                )
+                .map((item, index) => (
+                  <div
+                    key={item.process_name}
+                    className="process-card executive-process-card clean-process-card"
+                    style={{
+                      borderRadius: 22,
+                      border: `1px solid ${CHART_COLORS.cardBorder}`,
+                      boxShadow: CHART_COLORS.cardShadowSoft,
+                      background: "#ffffff",
+                    }}
+                  >
+                    <div className="process-rank-chip">#{index + 1}</div>
+                    <div className="process-card-title">
+                      {safeDisplay(item.process_name)}
+                    </div>
+                    <div className="process-card-value big-percent">
+                      {safeDisplay(item.average_general, formatPercent)}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
             </div>
           </section>
         </>
