@@ -521,9 +521,8 @@ function buildDailySeriesFromHistory(historyRows, filter) {
     return {
       date: recordDate,
       day,
-      xLabel: String(day),
-      shortLabel: String(day),
-      fullshortLabel: String(day),
+      xLabel: recordDate,
+      shortLabel: formatShortDate(recordDate),
       value: Number.isFinite(realValue) ? realValue : 0,
       originalValue: realValue,
       trendValue: Number.isFinite(realValue) ? realValue : 0,
@@ -1357,6 +1356,7 @@ function renderTrendChart({
             textAnchor="middle"
             height={expanded ? 46 : 40}
             tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
+            tickFormatter={(value) => formatShortDate(value)}
             label={
               expanded
                 ? {
@@ -1797,7 +1797,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
           observationMarkerY: Number.isFinite(numericValue) ? numericValue : 0,
         };
       })
-      .sort((a, b) => Number(a.day) - Number(b.day));
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
   }, [
     dashboardData,
     indicatorHistoryRows,
