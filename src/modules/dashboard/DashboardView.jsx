@@ -52,7 +52,6 @@ const CHART_COLORS = {
   cardBorder: "#e7eef7",
   cardShadow: "0 16px 40px rgba(17, 42, 74, 0.08)",
   cardShadowSoft: "0 12px 30px rgba(17, 42, 74, 0.06)",
-  selectedStroke: "#0f2744",
 };
 
 const MONTHS_ES = [
@@ -366,14 +365,24 @@ function buildIndicatorBackgroundBands(indicator, yDomainMax) {
   return segments.filter(Boolean).sort((a, b) => a.priority - b.priority);
 }
 
+/**
+ * CORRECCIÓN CLAVE:
+ * 1) row.value
+ * 2) row.single_value
+ * 3) promedio shifts
+ */
 function getMeasuredValueFromHistoryRow(row) {
   if (!row) return null;
 
   const directValue = Number(row.value);
-  if (Number.isFinite(directValue)) return directValue;
+  if (Number.isFinite(directValue)) {
+    return directValue;
+  }
 
   const singleValue = Number(row.single_value);
-  if (Number.isFinite(singleValue)) return singleValue;
+  if (Number.isFinite(singleValue)) {
+    return singleValue;
+  }
 
   const values = [];
 
@@ -393,6 +402,7 @@ function getMeasuredValueFromHistoryRow(row) {
   }
 
   if (!values.length) return null;
+
   return values.reduce((acc, val) => acc + val, 0) / values.length;
 }
 
@@ -551,7 +561,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
   const filteredRows = filterHistoryRowsByPeriod(historyRows, filter);
 
   return sortByIsoDateAsc(
-    filteredRows.map((item) => {
+    filteredRows.map((item, index) => {
       const recordDate = getSafeIsoDate(item.record_date);
       const realValue = getMeasuredValueFromHistoryRow(item);
       const general = normalizeGeneralToPercent(item.general || 0);
@@ -559,6 +569,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
       const observation = String(item.observation || "").trim();
 
       return {
+        chartIndex: index,
         rawDate: recordDate,
         date: recordDate,
         record_date: recordDate,
@@ -590,7 +601,10 @@ function buildDailySeriesFromHistory(historyRows, filter) {
         critical_value: item.critical_value,
       };
     })
-  );
+  ).map((item, sortedIndex) => ({
+    ...item,
+    chartIndex: sortedIndex,
+  }));
 }
 
 function PersonProgressLabel(props) {
@@ -772,9 +786,11 @@ function ExecutiveIndicatorCard({
   if (!sortedSeries.length) return null;
 
   const activePoint = selectedPoint || sortedSeries[sortedSeries.length - 1];
+
   const activeIndex = sortedSeries.findIndex(
-    (item) => item.rawDate === activePoint.rawDate
+    (item) => Number(item.chartIndex) === Number(activePoint.chartIndex)
   );
+
   const previousPoint = activeIndex > 0 ? sortedSeries[activeIndex - 1] : null;
 
   const currentMeasuredValue =
@@ -793,6 +809,7 @@ function ExecutiveIndicatorCard({
       : null;
 
   const targetValue = getSafeNumericValue(selectedDashboardIndicator.target_value);
+
   const currentStatus = activePoint
     ? normalizeStatus(activePoint.status)
     : normalizeStatus(selectedDashboardIndicator.status);
@@ -1306,8 +1323,8 @@ function renderTrendChart({
   processValueAxisLabel,
   selectedDashboardIndicator,
   expanded = false,
-  selectedTrendDate = "",
-  onSelectTrendPoint = () => {},
+  selectedTrendIndex = -1,
+  onSelectTrendBar = null,
 }) {
   if (isStandardIndicatorSelected) {
     const yDomainMax = resolveChartDomainMax(
@@ -1320,7 +1337,8 @@ function renderTrendChart({
       yDomainMax
     );
 
-    const targetLineValue = getIndicatorTargetLineValue(selectedDashboardIndicator);
+    const targetLineValue =
+      getIndicatorTargetLineValue(selectedDashboardIndicator);
 
     return (
       <ResponsiveContainer width="100%" height="100%">
@@ -1427,33 +1445,27 @@ function renderTrendChart({
             />
           ) : null}
 
-          <Tooltip
-            cursor={{ fill: "rgba(36,89,195,0.08)" }}
-            content={({ active, payload }) => {
-              if (!active || !payload?.length) return null;
-              return null;
-            }}
-          />
-
           <Bar
             yAxisId="left"
             dataKey="value"
             name={processValueAxisLabel}
             radius={[10, 10, 0, 0]}
             maxBarSize={expanded ? 46 : 34}
-            onClick={(data) => {
-              if (data?.rawDate) onSelectTrendPoint(data.rawDate);
+            onClick={(data, index) => {
+              if (typeof onSelectTrendBar === "function") {
+                onSelectTrendBar(index, data);
+              }
             }}
           >
             {processDailySeries.map((entry, index) => {
-              const isSelected = entry.rawDate === selectedTrendDate;
+              const isSelected = index === selectedTrendIndex;
               return (
                 <Cell
                   key={`cell-${entry.rawDate || index}`}
                   fill={entry.fill || CHART_COLORS.ok}
-                  stroke={isSelected ? CHART_COLORS.selectedStroke : "transparent"}
+                  stroke={isSelected ? CHART_COLORS.navy : "transparent"}
                   strokeWidth={isSelected ? 3 : 0}
-                  cursor="pointer"
+                  style={{ cursor: "pointer" }}
                 />
               );
             })}
@@ -1468,26 +1480,9 @@ function renderTrendChart({
             name="% cumplimiento"
             stroke={CHART_COLORS.navy}
             strokeWidth={3}
-            dot={(props) => {
-              const { cx, cy, payload } = props;
-              const isSelected = payload?.rawDate === selectedTrendDate;
-
-              return (
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r={isSelected ? 6 : expanded ? 4 : 3}
-                  fill={CHART_COLORS.navy}
-                  stroke={isSelected ? CHART_COLORS.selectedStroke : CHART_COLORS.navy}
-                  strokeWidth={isSelected ? 3 : 1}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => {
-                    if (payload?.rawDate) onSelectTrendPoint(payload.rawDate);
-                  }}
-                />
-              );
-            }}
-            activeDot={{ r: expanded ? 6 : 5 }}
+            dot={{ r: expanded ? 4 : 3, fill: CHART_COLORS.navy }}
+            activeDot={false}
+            isAnimationActive={false}
           />
 
           <Scatter
@@ -1559,7 +1554,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
   const [indicatorHistoryRows, setIndicatorHistoryRows] = useState([]);
   const [historySummary, setHistorySummary] = useState(null);
   const [isTrendExpanded, setIsTrendExpanded] = useState(false);
-  const [selectedTrendDate, setSelectedTrendDate] = useState("");
+  const [selectedTrendIndex, setSelectedTrendIndex] = useState(-1);
 
   const [dashboardFilter, setDashboardFilter] = useState({
     process_id: "",
@@ -1605,7 +1600,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       setIsTrendExpanded(false);
       setIndicatorHistoryRows([]);
       setHistorySummary(null);
-      setSelectedTrendDate("");
+      setSelectedTrendIndex(-1);
 
       const filters = {
         ...dashboardFilter,
@@ -1902,28 +1897,30 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
 
   useEffect(() => {
     if (!processDailySeries.length) {
-      setSelectedTrendDate("");
+      setSelectedTrendIndex(-1);
       return;
     }
 
-    const exists = processDailySeries.some(
-      (item) => item.rawDate === selectedTrendDate
-    );
-
-    if (!exists) {
-      setSelectedTrendDate(processDailySeries[processDailySeries.length - 1].rawDate);
+    if (
+      selectedTrendIndex < 0 ||
+      selectedTrendIndex >= processDailySeries.length
+    ) {
+      setSelectedTrendIndex(processDailySeries.length - 1);
     }
-  }, [processDailySeries, selectedTrendDate]);
+  }, [processDailySeries, selectedTrendIndex]);
 
   const selectedTrendPoint = useMemo(() => {
     if (!processDailySeries.length) return null;
 
-    const match = processDailySeries.find(
-      (item) => item.rawDate === selectedTrendDate
-    );
+    if (
+      selectedTrendIndex >= 0 &&
+      selectedTrendIndex < processDailySeries.length
+    ) {
+      return processDailySeries[selectedTrendIndex];
+    }
 
-    return match || processDailySeries[processDailySeries.length - 1];
-  }, [processDailySeries, selectedTrendDate]);
+    return processDailySeries[processDailySeries.length - 1];
+  }, [processDailySeries, selectedTrendIndex]);
 
   const processValueAxisLabel = useMemo(() => {
     if (!selectedDashboardIndicator) return "Valor";
@@ -2837,8 +2834,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       processValueAxisLabel,
                       selectedDashboardIndicator,
                       expanded: false,
-                      selectedTrendDate,
-                      onSelectTrendPoint: setSelectedTrendDate,
+                      selectedTrendIndex,
+                      onSelectTrendBar: (index) => setSelectedTrendIndex(index),
                     })}
                   </div>
 
@@ -3321,8 +3318,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   processValueAxisLabel,
                   selectedDashboardIndicator,
                   expanded: true,
-                  selectedTrendDate,
-                  onSelectTrendPoint: setSelectedTrendDate,
+                  selectedTrendIndex,
+                  onSelectTrendBar: (index) => setSelectedTrendIndex(index),
                 })}
               </div>
             </div>
