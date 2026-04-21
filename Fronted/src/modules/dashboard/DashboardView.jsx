@@ -185,10 +185,9 @@ function formatDayMonth(value) {
   const iso = getSafeIsoDate(value);
   if (!iso) return "N/D";
 
-  const [year, month, day] = iso.split("-");
+  const [, month, day] = iso.split("-");
   const monthIndex = Number(month) - 1;
   const monthName = MONTHS_ES[monthIndex] || month;
-
   return `${Number(day)} ${monthName.slice(0, 3)}`;
 }
 
@@ -199,8 +198,15 @@ function formatFullDateEs(value) {
   const [year, month, day] = iso.split("-");
   const monthIndex = Number(month) - 1;
   const monthName = MONTHS_ES[monthIndex] || month;
-
   return `${Number(day)} de ${monthName} de ${year}`;
+}
+
+function sortByIsoDateAsc(list) {
+  return [...(Array.isArray(list) ? list : [])].sort(
+    (a, b) =>
+      new Date(getSafeIsoDate(a?.rawDate || a?.date || a?.record_date)) -
+      new Date(getSafeIsoDate(b?.rawDate || b?.date || b?.record_date))
+  );
 }
 
 function getIndicatorTargetLineValue(indicator) {
@@ -464,7 +470,9 @@ function filterHistoryRowsByPeriod(historyRows, filter) {
   const period = String(filter?.period || "month");
 
   const sorted = [...rows].sort(
-    (a, b) => new Date(getSafeIsoDate(a.record_date)) - new Date(getSafeIsoDate(b.record_date))
+    (a, b) =>
+      new Date(getSafeIsoDate(a.record_date)) -
+      new Date(getSafeIsoDate(b.record_date))
   );
 
   if (period === "day") {
@@ -474,8 +482,7 @@ function filterHistoryRowsByPeriod(historyRows, filter) {
     return sorted.filter((row) => {
       const iso = getSafeIsoDate(row.record_date);
       if (!iso) return false;
-      const day = Number(iso.slice(8, 10));
-      return day === selectedDay;
+      return Number(iso.slice(8, 10)) === selectedDay;
     });
   }
 
@@ -533,31 +540,11 @@ function getSummaryValue(summary, keys, fallback = 0) {
   return fallback;
 }
 
-function getLatestHistoryRecord(historyRows) {
-  const rows = Array.isArray(historyRows) ? historyRows : [];
-  if (!rows.length) return null;
-
-  return [...rows].sort(
-    (a, b) => new Date(getSafeIsoDate(b.record_date)) - new Date(getSafeIsoDate(a.record_date))
-  )[0];
-}
-
-function getPreviousHistoryRecord(historyRows) {
-  const rows = Array.isArray(historyRows) ? historyRows : [];
-  if (rows.length < 2) return null;
-
-  const sorted = [...rows].sort(
-    (a, b) => new Date(getSafeIsoDate(b.record_date)) - new Date(getSafeIsoDate(a.record_date))
-  );
-
-  return sorted[1] || null;
-}
-
 function buildDailySeriesFromHistory(historyRows, filter) {
   const filteredRows = filterHistoryRowsByPeriod(historyRows, filter);
 
-  return [...filteredRows]
-    .map((item) => {
+  return sortByIsoDateAsc(
+    filteredRows.map((item) => {
       const recordDate = getSafeIsoDate(item.record_date);
       const realValue = getMeasuredValueFromHistoryRow(item);
       const general = normalizeGeneralToPercent(item.general || 0);
@@ -590,7 +577,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
         critical_value: item.critical_value,
       };
     })
-    .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate));
+  );
 }
 
 function PersonProgressLabel(props) {
@@ -833,22 +820,34 @@ function TrendLegend({
 function CustomDailyTooltip({
   active,
   payload,
+  label,
   valueAxisLabel,
   selectedDashboardIndicator,
 }) {
   if (!active || !payload?.length) return null;
 
-  const payloadRow =
-    payload.find((item) => item?.payload?.rawDate)?.payload ||
-    payload.find((item) => item?.dataKey === "value")?.payload ||
-    payload.find((item) => item?.payload)?.payload ||
+  const activeIsoDate = getSafeIsoDate(label);
+
+  const payloadRows = payload
+    .map((item) => item?.payload)
+    .filter(Boolean);
+
+  const row =
+    payloadRows.find((item) => getSafeIsoDate(item?.rawDate) === activeIsoDate) ||
+    payloadRows.find((item) => getSafeIsoDate(item?.date) === activeIsoDate) ||
+    payloadRows.find(
+      (item) => getSafeIsoDate(item?.record_date) === activeIsoDate
+    ) ||
+    payloadRows[0] ||
     {};
 
   const realIsoDate =
-    payloadRow.rawDate || payloadRow.date || payloadRow.record_date || "";
+    getSafeIsoDate(row.rawDate) ||
+    getSafeIsoDate(row.date) ||
+    getSafeIsoDate(row.record_date) ||
+    activeIsoDate;
 
-  const formattedDate =
-    payloadRow.fullDateLabel || formatFullDateEs(realIsoDate);
+  const formattedDate = formatFullDateEs(realIsoDate);
 
   const targetValue = getIndicatorTargetLineValue(selectedDashboardIndicator);
 
@@ -864,7 +863,7 @@ function CustomDailyTooltip({
     selectedDashboardIndicator?.unit || valueAxisLabel
   );
 
-  const pillStyles = getStatusPillStyles(payloadRow.status);
+  const pillStyles = getStatusPillStyles(row.status);
 
   return (
     <div
@@ -905,7 +904,7 @@ function CustomDailyTooltip({
             letterSpacing: "0.06em",
           }}
         >
-          {getStatusLabel(payloadRow.status)}
+          {getStatusLabel(row.status)}
         </span>
       </div>
 
@@ -921,33 +920,37 @@ function CustomDailyTooltip({
         <div>
           <strong>Fecha:</strong> {formattedDate}
         </div>
+
         <div>
           <strong>Valor:</strong>{" "}
-          {payloadRow.originalValue !== null && payloadRow.originalValue !== undefined
-            ? `${formatPlainNumber(Number(payloadRow.value || 0))} ${valueAxisLabel}`
+          {row.originalValue !== null && row.originalValue !== undefined
+            ? `${formatPlainNumber(Number(row.originalValue))} ${valueAxisLabel}`
             : "N/D"}
         </div>
+
         <div>
           <strong>Cumplimiento:</strong>{" "}
           {safeDisplay(
-            Number.isFinite(Number(payloadRow.general))
-              ? Number(payloadRow.general)
-              : null,
+            Number.isFinite(Number(row.general)) ? Number(row.general) : null,
             formatPercent
           )}
         </div>
+
         <div>
-          <strong>Estado:</strong> {safeDisplay(getStatusLabel(payloadRow.status))}
+          <strong>Estado:</strong> {safeDisplay(getStatusLabel(row.status))}
         </div>
+
         <div>
           <strong>Meta:</strong>{" "}
           {targetValue !== null
             ? `${formatPlainNumber(targetValue)} ${valueAxisLabel}`
             : "N/D"}
         </div>
+
         <div>
           <strong>Warning rule:</strong> {warningRule || "N/D"}
         </div>
+
         <div style={{ gridColumn: "1 / -1" }}>
           <strong>Critical rule:</strong> {criticalRule || "N/D"}
         </div>
@@ -962,7 +965,7 @@ function CustomDailyTooltip({
           borderTop: "1px solid #e6eef8",
         }}
       >
-        <strong>Observación:</strong> {safeDisplay(payloadRow.observation)}
+        <strong>Observación:</strong> {safeDisplay(row.observation)}
       </div>
     </div>
   );
@@ -970,37 +973,43 @@ function CustomDailyTooltip({
 
 function ExecutiveIndicatorCard({
   selectedDashboardIndicator,
-  indicatorHistoryRows,
+  processDailySeries,
   processValueAxisLabel,
 }) {
   if (!selectedDashboardIndicator) return null;
 
-  const latestRecord = getLatestHistoryRecord(indicatorHistoryRows);
-  const previousRecord = getPreviousHistoryRecord(indicatorHistoryRows);
+  const sortedSeries = sortByIsoDateAsc(processDailySeries);
+  const latestPoint = sortedSeries.length ? sortedSeries[sortedSeries.length - 1] : null;
+  const previousPoint =
+    sortedSeries.length > 1 ? sortedSeries[sortedSeries.length - 2] : null;
 
-  const latestMeasuredValue = latestRecord
-    ? getMeasuredValueFromHistoryRow(latestRecord)
-    : null;
-  const previousMeasuredValue = previousRecord
-    ? getMeasuredValueFromHistoryRow(previousRecord)
-    : null;
+  const latestMeasuredValue =
+    latestPoint?.originalValue !== null && latestPoint?.originalValue !== undefined
+      ? Number(latestPoint.originalValue)
+      : null;
 
-  const complianceValue = latestRecord
-    ? normalizeGeneralToPercent(latestRecord.general || 0)
-    : null;
+  const previousMeasuredValue =
+    previousPoint?.originalValue !== null && previousPoint?.originalValue !== undefined
+      ? Number(previousPoint.originalValue)
+      : null;
+
+  const complianceValue =
+    latestPoint && Number.isFinite(Number(latestPoint.general))
+      ? Number(latestPoint.general)
+      : null;
 
   const targetValue = getSafeNumericValue(selectedDashboardIndicator.target_value);
-  const latestStatus = latestRecord
-    ? normalizeStatus(latestRecord.status)
+  const latestStatus = latestPoint
+    ? normalizeStatus(latestPoint.status)
     : normalizeStatus(selectedDashboardIndicator.status);
 
   const variationValue =
     latestMeasuredValue !== null &&
     previousMeasuredValue !== null
-      ? Number(latestMeasuredValue) - Number(previousMeasuredValue)
+      ? latestMeasuredValue - previousMeasuredValue
       : null;
 
-  const latestObservation = String(latestRecord?.observation || "").trim();
+  const latestObservation = String(latestPoint?.observation || "").trim();
   const statusStyles = getStatusPillStyles(latestStatus);
 
   const observationTone =
@@ -1154,7 +1163,7 @@ function ExecutiveIndicatorCard({
               marginBottom: 14,
             }}
           >
-            Bloque izquierda · info principal
+            BLOQUE IZQUIERDA · INFO PRINCIPAL
           </div>
 
           <div
@@ -1181,7 +1190,7 @@ function ExecutiveIndicatorCard({
                   color: CHART_COLORS.text,
                 }}
               >
-                {safeDisplay(latestRecord?.record_date, formatFullDateEs)}
+                {latestPoint?.fullDateLabel || "N/D"}
               </div>
             </div>
 
@@ -1282,7 +1291,7 @@ function ExecutiveIndicatorCard({
               marginBottom: 14,
             }}
           >
-            Bloque derecha · KPIs
+            BLOQUE DERECHA · KPIS
           </div>
 
           <div
@@ -1333,11 +1342,7 @@ function ExecutiveIndicatorCard({
         </div>
       </div>
 
-      <div
-        style={{
-          padding: "0 22px 22px",
-        }}
-      >
+      <div style={{ padding: "0 22px 22px" }}>
         <div
           style={{
             borderRadius: 22,
@@ -1356,7 +1361,7 @@ function ExecutiveIndicatorCard({
               opacity: 0.9,
             }}
           >
-            Bloque abajo · observación
+            BLOQUE ABAJO · OBSERVACIÓN
           </div>
 
           <div
@@ -1393,8 +1398,7 @@ function renderTrendChart({
       yDomainMax
     );
 
-    const targetLineValue =
-      getIndicatorTargetLineValue(selectedDashboardIndicator);
+    const targetLineValue = getIndicatorTargetLineValue(selectedDashboardIndicator);
 
     return (
       <ResponsiveContainer width="100%" height="100%">
@@ -1409,12 +1413,14 @@ function renderTrendChart({
           <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
 
           <XAxis
-            dataKey="xLabel"
+            dataKey="rawDate"
+            type="category"
             interval={0}
             angle={0}
             textAnchor="middle"
             minTickGap={0}
             height={expanded ? 46 : 40}
+            tickFormatter={(value) => formatDayMonth(value)}
             tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
             label={
               expanded
@@ -1549,9 +1555,11 @@ function renderTrendChart({
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart
-        data={(dashboardData?.trend || [])
-          .map((item) => {
-            const realDate = getSafeIsoDate(item.label);
+        data={sortByIsoDateAsc(
+          (dashboardData?.trend || []).map((item) => {
+            const realDate = getSafeIsoDate(
+              item.record_date || item.date || item.label
+            );
             return {
               ...item,
               rawDate: realDate,
@@ -1562,24 +1570,23 @@ function renderTrendChart({
               shortLabel: formatDayMonth(realDate),
             };
           })
-          .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate))}
+        )}
         margin={{ top: 10, right: 20, left: 0, bottom: 50 }}
       >
         <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
         <XAxis
-          dataKey="xLabel"
+          dataKey="rawDate"
           interval={0}
           angle={0}
           textAnchor="middle"
           height={40}
           tick={{ fontSize: 11 }}
+          tickFormatter={(value) => formatDayMonth(value)}
         />
         <YAxis tickFormatter={(value) => `${value}%`} />
         <Tooltip
           formatter={(value) => formatPercent(value)}
-          labelFormatter={(label, payload) =>
-            payload?.[0]?.payload?.fullDateLabel || label
-          }
+          labelFormatter={(label) => formatFullDateEs(label)}
         />
         <Line
           type="monotone"
@@ -1849,11 +1856,13 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       return buildDailySeriesFromHistory(filteredIndicatorHistoryRows, dashboardFilter);
     }
 
-    return (dashboardData?.trend || [])
-      .map((item) => {
+    return sortByIsoDateAsc(
+      (dashboardData?.trend || []).map((item) => {
         const numericValue = Number(item.value || 0);
         const status = normalizeStatus(item.status || "ok");
-        const realDate = getSafeIsoDate(item.record_date || item.date || item.label);
+        const realDate = getSafeIsoDate(
+          item.record_date || item.date || item.label
+        );
 
         return {
           rawDate: realDate,
@@ -1873,7 +1882,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
           observationMarkerY: Number.isFinite(numericValue) ? numericValue : 0,
         };
       })
-      .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate));
+    );
   }, [
     dashboardData,
     filteredIndicatorHistoryRows,
@@ -2331,7 +2340,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
             <div className="subsection-title">Vista ejecutiva por proceso</div>
             <div className="process-overview-grid compact-process-grid">
               {(dashboardOverview.process_cards || [])
-                .map((item, index) => {
+                .map((item) => {
                   const value = Number(item.average_general || 0);
 
                   let derivedStatus = "ok";
@@ -2341,7 +2350,6 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   return {
                     ...item,
                     status: normalizeStatus(item.status || derivedStatus),
-                    rankIndex: index,
                   };
                 })
                 .filter((item) =>
@@ -2350,7 +2358,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                     dashboardFilter.status_filter
                   )
                 )
-                .map((item) => (
+                .map((item, index) => (
                   <div
                     key={item.process_name}
                     className="process-card executive-process-card clean-process-card"
@@ -2361,7 +2369,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       background: "#ffffff",
                     }}
                   >
-                    <div className="process-rank-chip">#{item.rankIndex + 1}</div>
+                    <div className="process-rank-chip">#{index + 1}</div>
                     <div className="process-card-title">
                       {safeDisplay(item.process_name)}
                     </div>
@@ -2747,7 +2755,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               {isStandardIndicatorSelected && (
                 <ExecutiveIndicatorCard
                   selectedDashboardIndicator={selectedDashboardIndicator}
-                  indicatorHistoryRows={filteredIndicatorHistoryRows}
+                  processDailySeries={processDailySeries}
                   processValueAxisLabel={processValueAxisLabel}
                 />
               )}
@@ -3167,9 +3175,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                             />
                             <XAxis dataKey="label" hide />
                             <YAxis hide />
-                            <Tooltip
-                              formatter={(value) => formatPercent(value)}
-                            />
+                            <Tooltip formatter={(value) => formatPercent(value)} />
                             <Line
                               type="monotone"
                               dataKey="value"
