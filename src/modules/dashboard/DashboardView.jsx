@@ -159,13 +159,6 @@ function safeDisplay(value, formatter = null) {
   return formatter ? formatter(value) : value;
 }
 
-function formatDelta(delta, suffix = "") {
-  const numeric = Number(delta);
-  if (!Number.isFinite(numeric)) return "N/D";
-  const sign = numeric > 0 ? "+" : "";
-  return `${sign}${numeric.toFixed(2)}${suffix}`;
-}
-
 function formatChartNumber(value) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric)) return "0";
@@ -674,76 +667,6 @@ function DailyValueTopLabel(props) {
   );
 }
 
-function MetricMiniCard({ title, value, tone = "neutral" }) {
-  const toneMap = {
-    neutral: {
-      background: "#ffffff",
-      color: CHART_COLORS.text,
-      border: CHART_COLORS.cardBorder,
-    },
-    ok: {
-      background: "#f5fbf8",
-      color: CHART_COLORS.ok,
-      border: "rgba(57,169,107,0.18)",
-    },
-    warning: {
-      background: "#fffaf0",
-      color: "#a16d00",
-      border: "rgba(244,196,48,0.22)",
-    },
-    critical: {
-      background: "#fff6f6",
-      color: CHART_COLORS.critical,
-      border: "rgba(226,75,75,0.22)",
-    },
-    primary: {
-      background: "#eef4ff",
-      color: CHART_COLORS.navy,
-      border: "rgba(36,89,195,0.15)",
-    },
-  };
-
-  const currentTone = toneMap[tone] || toneMap.neutral;
-
-  return (
-    <div
-      style={{
-        background: currentTone.background,
-        color: currentTone.color,
-        border: `1px solid ${currentTone.border}`,
-        borderRadius: 18,
-        padding: "14px 16px",
-        minHeight: 84,
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        boxShadow: "0 10px 25px rgba(17,42,74,0.04)",
-      }}
-    >
-      <span
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: CHART_COLORS.textSoft,
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-        }}
-      >
-        {title}
-      </span>
-      <strong
-        style={{
-          fontSize: 24,
-          lineHeight: 1.1,
-          color: currentTone.color,
-        }}
-      >
-        {value}
-      </strong>
-    </div>
-  );
-}
-
 function TrendLegend({
   selectedDashboardIndicator,
   observationsCount,
@@ -827,7 +750,6 @@ function CustomDailyTooltip({
   if (!active || !payload?.length) return null;
 
   const activeIsoDate = getSafeIsoDate(label);
-
   const payloadRows = payload.map((item) => item?.payload).filter(Boolean);
 
   const row =
@@ -1038,9 +960,7 @@ function ExecutiveIndicatorCard({
         style={{
           padding: 22,
           display: "grid",
-          gridTemplateColumns: hasObservation
-            ? "minmax(260px, 0.9fr) minmax(260px, 0.9fr) minmax(320px, 1.2fr)"
-            : "minmax(260px, 1fr) minmax(260px, 1fr)",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
           gap: 16,
         }}
       >
@@ -1490,9 +1410,21 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       }
 
       if (filters.process_id) {
-        const requests = [API.getProcessDashboard(filters)];
+        const selectedIndicator = filters.indicator_id
+          ? indicators.find(
+              (item) => String(item.id) === String(filters.indicator_id)
+            )
+          : null;
 
-        if (filters.indicator_id && isStandardIndicatorSelected) {
+        const isStandardSelected =
+          !!selectedIndicator && selectedIndicator.scope_type !== "entity";
+
+        const processRequest = API.getProcessDashboard(filters);
+
+        let historyRequest = Promise.resolve(null);
+        let historySummaryRequest = Promise.resolve(null);
+
+        if (filters.indicator_id && isStandardSelected) {
           const historyParams = {
             year: filters.year ? Number(filters.year) : undefined,
             month:
@@ -1508,10 +1440,15 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
             indicator_id: Number(filters.indicator_id),
           };
 
-          requests.push(API.getHistory(historyParams));
+          historyRequest = API.getHistory(historyParams);
+          historySummaryRequest = API.getHistorySummary(historyParams);
         }
 
-        const [processData, historyData] = await Promise.all(requests);
+        const [processData, historyData, historySummaryData] = await Promise.all([
+          processRequest,
+          historyRequest,
+          historySummaryRequest,
+        ]);
 
         setDashboardData({
           ...processData,
@@ -1519,7 +1456,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
         });
 
         setIndicatorHistoryRows(readHistoryRows(historyData));
-        setHistorySummary(readHistorySummary(historyData));
+        setHistorySummary(historySummaryData || readHistorySummary(historyData));
         setDashboardOverview(null);
       } else {
         const overview = await API.getDashboardOverview(filters);
@@ -1536,6 +1473,40 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
   }
 
   const dashboardPieData = useMemo(() => {
+    if (isStandardIndicatorSelected && historySummary) {
+      const source = [
+        {
+          name: "OK",
+          normalizedStatus: "ok",
+          value: Number(historySummary.ok_count || 0),
+        },
+        {
+          name: "WARNING",
+          normalizedStatus: "warning",
+          value: Number(historySummary.warning_count || 0),
+        },
+        {
+          name: "CRITICAL",
+          normalizedStatus: "critical",
+          value: Number(historySummary.critical_count || 0),
+        },
+      ].filter((item) =>
+        isMatchingStatusFilter(item.normalizedStatus, dashboardFilter.status_filter)
+      );
+
+      const total = source.reduce((acc, item) => acc + Number(item.value || 0), 0);
+
+      return source
+        .filter((item) => Number(item.value || 0) > 0)
+        .map((item) => ({
+          ...item,
+          percentage: total
+            ? ((Number(item.value || 0) / total) * 100).toFixed(1)
+            : "0.0",
+          fill: getBarColorByStatus(item.normalizedStatus),
+        }));
+    }
+
     const source =
       dashboardData?.status_distribution ||
       dashboardOverview?.status_distribution ||
@@ -1565,7 +1536,13 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
           : "0.0",
         fill: getBarColorByStatus(item.normalizedStatus),
       }));
-  }, [dashboardData, dashboardOverview, dashboardFilter.status_filter]);
+  }, [
+    dashboardData,
+    dashboardOverview,
+    dashboardFilter.status_filter,
+    historySummary,
+    isStandardIndicatorSelected,
+  ]);
 
   const dashboardBarData = useMemo(() => {
     if (!dashboardData?.indicator_cards?.length) return [];
@@ -1631,16 +1608,12 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     return Math.max(420, rows * 48);
   }, [entityDashboardBarData]);
 
-  const filteredIndicatorHistoryRows = useMemo(() => {
-    if (!isStandardIndicatorSelected) return [];
-    return filterHistoryRowsByPeriod(indicatorHistoryRows, dashboardFilter);
-  }, [indicatorHistoryRows, dashboardFilter, isStandardIndicatorSelected]);
-
   const processDailySeriesRaw = useMemo(() => {
     if (!dashboardData || dashboardData?.is_entity_dashboard) return [];
 
-    if (isStandardIndicatorSelected && filteredIndicatorHistoryRows.length) {
-      return buildDailySeriesFromHistory(filteredIndicatorHistoryRows, dashboardFilter);
+    if (isStandardIndicatorSelected) {
+      if (!indicatorHistoryRows.length) return [];
+      return buildDailySeriesFromHistory(indicatorHistoryRows, dashboardFilter);
     }
 
     return sortByIsoDateAsc(
@@ -1672,7 +1645,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     );
   }, [
     dashboardData,
-    filteredIndicatorHistoryRows,
+    indicatorHistoryRows,
     isStandardIndicatorSelected,
     dashboardFilter,
   ]);
