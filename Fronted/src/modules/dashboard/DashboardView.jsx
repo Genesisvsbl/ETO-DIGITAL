@@ -159,6 +159,13 @@ function safeDisplay(value, formatter = null) {
   return formatter ? formatter(value) : value;
 }
 
+function formatDelta(delta, suffix = "") {
+  const numeric = Number(delta);
+  if (!Number.isFinite(numeric)) return "N/D";
+  const sign = numeric > 0 ? "+" : "";
+  return `${sign}${numeric.toFixed(2)}${suffix}`;
+}
+
 function formatChartNumber(value) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric)) return "0";
@@ -667,121 +674,26 @@ function DailyValueTopLabel(props) {
   );
 }
 
-function TrendLegend({
-  selectedDashboardIndicator,
-  observationsCount,
-  processValueAxisLabel,
-  compact = false,
-  processName,
-  weekRangeLabel,
-  showRange = false,
-}) {
-  const targetValue = getIndicatorTargetLineValue(selectedDashboardIndicator);
-
-  return (
-    <div
-      style={{
-        marginTop: compact ? 10 : 0,
-        display: "flex",
-        gap: compact ? 14 : 18,
-        flexWrap: "wrap",
-        alignItems: "center",
-        fontSize: compact ? 12 : 13,
-        color: CHART_COLORS.text,
-      }}
-    >
-      {processName ? (
-        <span>
-          <strong>Proceso:</strong> {processName}
-        </span>
-      ) : null}
-
-      <span>
-        <strong>Unidad:</strong> {processValueAxisLabel}
-      </span>
-
-      <span>
-        <strong>Barras:</strong> valor real por fecha histórica
-      </span>
-
-      <span>
-        <strong>Línea:</strong> % cumplimiento
-      </span>
-
-      <span>
-        <strong>Línea punteada/meta:</strong>{" "}
-        {targetValue !== null
-          ? `meta objetivo (${formatPlainNumber(targetValue)} ${processValueAxisLabel})`
-          : "sin meta configurada"}
-      </span>
-
-      <span>
-        <strong>Fondo amarillo:</strong> warning
-      </span>
-
-      <span>
-        <strong>Fondo rojo:</strong> critical
-      </span>
-
-      <span>
-        <strong>* / !</strong> observación
-      </span>
-
-      <span>
-        <strong>Total observaciones:</strong> {observationsCount}
-      </span>
-
-      {showRange && weekRangeLabel ? (
-        <span>
-          <strong>Rango:</strong> {weekRangeLabel}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
+/**
+ * Tooltip simplificado:
+ * - usa EXACTAMENTE la barra activa
+ * - NO reconstruye fecha
+ * - NO usa el label del eje como fuente de verdad
+ */
 function CustomDailyTooltip({
   active,
   payload,
-  label,
   valueAxisLabel,
-  selectedDashboardIndicator,
 }) {
   if (!active || !payload?.length) return null;
 
-  const activeIsoDate = getSafeIsoDate(label);
-  const payloadRows = payload.map((item) => item?.payload).filter(Boolean);
-
-  const row =
-    payloadRows.find((item) => getSafeIsoDate(item?.rawDate) === activeIsoDate) ||
-    payloadRows.find((item) => getSafeIsoDate(item?.date) === activeIsoDate) ||
-    payloadRows.find((item) => getSafeIsoDate(item?.record_date) === activeIsoDate) ||
-    payloadRows[0] ||
-    {};
-
+  const row = payload?.[0]?.payload || {};
   const realIsoDate =
     getSafeIsoDate(row.rawDate) ||
     getSafeIsoDate(row.date) ||
-    getSafeIsoDate(row.record_date) ||
-    activeIsoDate;
+    getSafeIsoDate(row.record_date);
 
   const formattedDate = formatFullDateEs(realIsoDate);
-
-  const targetValue = getIndicatorTargetLineValue(selectedDashboardIndicator);
-
-  const warningRule = formatRule(
-    selectedDashboardIndicator?.warning_operator,
-    selectedDashboardIndicator?.warning_value,
-    selectedDashboardIndicator?.unit || valueAxisLabel
-  );
-
-  const criticalRule = formatRule(
-    selectedDashboardIndicator?.critical_operator,
-    selectedDashboardIndicator?.critical_value,
-    selectedDashboardIndicator?.unit || valueAxisLabel
-  );
-
-  const pillStyles = getStatusPillStyles(row.status);
 
   return (
     <div
@@ -791,45 +703,23 @@ function CustomDailyTooltip({
         borderRadius: 16,
         padding: "14px 16px",
         boxShadow: "0 16px 34px rgba(23,50,77,0.14)",
-        minWidth: 300,
+        minWidth: 280,
       }}
     >
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
+          fontWeight: 800,
+          color: CHART_COLORS.text,
           marginBottom: 10,
+          fontSize: 16,
         }}
       >
-        <div
-          style={{
-            fontWeight: 800,
-            color: CHART_COLORS.text,
-          }}
-        >
-          {formattedDate}
-        </div>
-
-        <span
-          style={{
-            ...pillStyles,
-            padding: "5px 10px",
-            borderRadius: 999,
-            fontSize: 11,
-            fontWeight: 800,
-            letterSpacing: "0.06em",
-          }}
-        >
-          {getStatusLabel(row.status)}
-        </span>
+        {formattedDate}
       </div>
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
           gap: 8,
           fontSize: 13,
           color: CHART_COLORS.text,
@@ -847,48 +737,17 @@ function CustomDailyTooltip({
         </div>
 
         <div>
-          <strong>Cumplimiento:</strong>{" "}
-          {safeDisplay(
-            Number.isFinite(Number(row.general)) ? Number(row.general) : null,
-            formatPercent
-          )}
+          <strong>Observación:</strong> {safeDisplay(row.observation)}
         </div>
-
-        <div>
-          <strong>Estado:</strong> {safeDisplay(getStatusLabel(row.status))}
-        </div>
-
-        <div>
-          <strong>Meta:</strong>{" "}
-          {targetValue !== null
-            ? `${formatPlainNumber(targetValue)} ${valueAxisLabel}`
-            : "N/D"}
-        </div>
-
-        <div>
-          <strong>Warning rule:</strong> {warningRule || "N/D"}
-        </div>
-
-        <div style={{ gridColumn: "1 / -1" }}>
-          <strong>Critical rule:</strong> {criticalRule || "N/D"}
-        </div>
-      </div>
-
-      <div
-        style={{
-          color: CHART_COLORS.text,
-          fontSize: 13,
-          marginTop: 10,
-          paddingTop: 10,
-          borderTop: "1px solid #e6eef8",
-        }}
-      >
-        <strong>Observación:</strong> {safeDisplay(row.observation)}
       </div>
     </div>
   );
 }
 
+/**
+ * Bloque principal como lo tenías antes,
+ * pero tomando la info desde la serie histórica ya corregida.
+ */
 function ExecutiveIndicatorCard({
   selectedDashboardIndicator,
   processDailySeries,
@@ -900,15 +759,56 @@ function ExecutiveIndicatorCard({
   const latestPoint =
     sortedSeries.length > 0 ? sortedSeries[sortedSeries.length - 1] : null;
 
-  if (!latestPoint) return null;
+  const previousPoint =
+    sortedSeries.length > 1 ? sortedSeries[sortedSeries.length - 2] : null;
 
   const latestMeasuredValue =
     latestPoint?.originalValue !== null && latestPoint?.originalValue !== undefined
       ? Number(latestPoint.originalValue)
       : null;
 
+  const previousMeasuredValue =
+    previousPoint?.originalValue !== null && previousPoint?.originalValue !== undefined
+      ? Number(previousPoint.originalValue)
+      : null;
+
+  const complianceValue =
+    latestPoint && Number.isFinite(Number(latestPoint.general))
+      ? Number(latestPoint.general)
+      : null;
+
+  const targetValue = getSafeNumericValue(selectedDashboardIndicator.target_value);
+  const latestStatus = latestPoint
+    ? normalizeStatus(latestPoint.status)
+    : normalizeStatus(selectedDashboardIndicator.status);
+
+  const variationValue =
+    latestMeasuredValue !== null &&
+    previousMeasuredValue !== null
+      ? Number(latestMeasuredValue) - Number(previousMeasuredValue)
+      : null;
+
   const latestObservation = String(latestPoint?.observation || "").trim();
-  const hasObservation = !!latestObservation;
+  const statusStyles = getStatusPillStyles(latestStatus);
+
+  const observationTone =
+    latestStatus === "critical"
+      ? {
+          background: "#fff6f6",
+          border: "1px solid rgba(226,75,75,0.22)",
+          color: CHART_COLORS.critical,
+        }
+      : latestStatus === "warning"
+      ? {
+          background: "#fffaf0",
+          border: "1px solid rgba(244,196,48,0.28)",
+          color: "#946400",
+        }
+      : {
+          background: "#f5fbf8",
+          border: "1px solid rgba(57,169,107,0.20)",
+          color: CHART_COLORS.ok,
+        };
 
   return (
     <section
@@ -916,171 +816,470 @@ function ExecutiveIndicatorCard({
       style={{
         padding: 0,
         overflow: "hidden",
-        borderRadius: 28,
+        borderRadius: 24,
         border: `1px solid ${CHART_COLORS.cardBorder}`,
         boxShadow: CHART_COLORS.cardShadow,
-        background: "linear-gradient(180deg, #f8fbff 0%, #ffffff 100%)",
+        background: "#ffffff",
       }}
     >
       <div
         style={{
-          padding: "20px 22px 12px",
+          padding: "22px 22px 16px",
           borderBottom: "1px solid #eef3fa",
           background:
-            "linear-gradient(180deg, rgba(238,244,255,0.75) 0%, rgba(255,255,255,1) 100%)",
+            "linear-gradient(180deg, rgba(238,244,255,0.55) 0%, rgba(255,255,255,1) 100%)",
         }}
       >
         <div
           style={{
-            fontSize: 12,
-            fontWeight: 800,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: CHART_COLORS.textSoft,
-            marginBottom: 8,
-          }}
-        >
-          Resumen del último registro
-        </div>
-
-        <h3
-          style={{
-            margin: 0,
-            color: CHART_COLORS.text,
-            fontSize: 22,
-            lineHeight: 1.15,
-          }}
-        >
-          {safeDisplay(selectedDashboardIndicator?.code)} -{" "}
-          {safeDisplay(selectedDashboardIndicator?.name)}
-        </h3>
-      </div>
-
-      <div
-        style={{
-          padding: 22,
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: 16,
-        }}
-      >
-        <div
-          style={{
-            borderRadius: 22,
-            border: "1px solid #e7eef7",
-            background: "#ffffff",
-            boxShadow: CHART_COLORS.cardShadowSoft,
-            padding: "18px 20px",
-            minHeight: 120,
             display: "flex",
-            flexDirection: "column",
             justifyContent: "space-between",
+            gap: 16,
+            alignItems: "flex-start",
+            flexWrap: "wrap",
           }}
         >
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 800,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: CHART_COLORS.textSoft,
-            }}
-          >
-            Fecha
-          </div>
-
-          <div
-            style={{
-              fontSize: 28,
-              fontWeight: 900,
-              lineHeight: 1.1,
-              color: CHART_COLORS.navy,
-            }}
-          >
-            {latestPoint?.fullDateLabel || "N/D"}
-          </div>
-        </div>
-
-        <div
-          style={{
-            borderRadius: 22,
-            border: "1px solid #e7eef7",
-            background: "#ffffff",
-            boxShadow: CHART_COLORS.cardShadowSoft,
-            padding: "18px 20px",
-            minHeight: 120,
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-between",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 800,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: CHART_COLORS.textSoft,
-            }}
-          >
-            Valor real
-          </div>
-
-          <div
-            style={{
-              fontSize: 32,
-              fontWeight: 900,
-              lineHeight: 1.1,
-              color: CHART_COLORS.text,
-            }}
-          >
-            {latestMeasuredValue !== null
-              ? `${formatPlainNumber(latestMeasuredValue)} ${processValueAxisLabel}`
-              : "N/D"}
-          </div>
-        </div>
-
-        {hasObservation ? (
-          <div
-            style={{
-              borderRadius: 22,
-              border: "1px solid rgba(109,76,255,0.16)",
-              background: "rgba(109,76,255,0.05)",
-              boxShadow: CHART_COLORS.cardShadowSoft,
-              padding: "18px 20px",
-              minHeight: 120,
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
-            }}
-          >
+          <div>
             <div
               style={{
                 fontSize: 12,
                 fontWeight: 800,
                 letterSpacing: "0.08em",
                 textTransform: "uppercase",
-                color: CHART_COLORS.observation,
-                marginBottom: 10,
+                color: CHART_COLORS.textSoft,
+                marginBottom: 6,
               }}
             >
-              Observación
+              Indicador seleccionado
+            </div>
+
+            <h3
+              style={{
+                margin: 0,
+                color: CHART_COLORS.text,
+                fontSize: 24,
+                lineHeight: 1.12,
+              }}
+            >
+              {selectedDashboardIndicator.code} - {selectedDashboardIndicator.name}
+            </h3>
+
+            <div
+              style={{
+                marginTop: 8,
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+                color: CHART_COLORS.textSoft,
+                fontSize: 13,
+              }}
+            >
+              <span>
+                Frecuencia:{" "}
+                <strong style={{ color: CHART_COLORS.text }}>
+                  {safeDisplay(
+                    selectedDashboardIndicator.frequency
+                      ? formatFrequencyLabel(selectedDashboardIndicator.frequency)
+                      : null
+                  )}
+                </strong>
+              </span>
+              <span>
+                Captura:{" "}
+                <strong style={{ color: CHART_COLORS.text }}>
+                  {safeDisplay(
+                    selectedDashboardIndicator.capture_mode
+                      ? formatCaptureModeLabel(
+                          selectedDashboardIndicator.capture_mode
+                        )
+                      : null
+                  )}
+                </strong>
+              </span>
+            </div>
+          </div>
+
+          <span
+            style={{
+              ...statusStyles,
+              padding: "8px 14px",
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 900,
+              letterSpacing: "0.08em",
+              alignSelf: "flex-start",
+            }}
+          >
+            {safeDisplay(getStatusLabel(latestStatus))}
+          </span>
+        </div>
+      </div>
+
+      <div
+        style={{
+          padding: 22,
+          display: "grid",
+          gridTemplateColumns: "minmax(320px, 1.55fr) minmax(280px, 1fr)",
+          gap: 18,
+        }}
+      >
+        <div
+          style={{
+            border: "1px solid #edf2f8",
+            borderRadius: 22,
+            padding: 18,
+            background: "#ffffff",
+            boxShadow: CHART_COLORS.cardShadowSoft,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: CHART_COLORS.textSoft,
+              marginBottom: 14,
+            }}
+          >
+            Bloque izquierda · info principal
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(140px, 1fr))",
+              gap: 14,
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: CHART_COLORS.textSoft,
+                  marginBottom: 6,
+                }}
+              >
+                Fecha último registro
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color: CHART_COLORS.text,
+                }}
+              >
+                {safeDisplay(latestPoint?.rawDate, formatDayMonth)}
+              </div>
+            </div>
+
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: CHART_COLORS.textSoft,
+                  marginBottom: 6,
+                }}
+              >
+                Meta
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color: CHART_COLORS.text,
+                }}
+              >
+                {targetValue !== null
+                  ? `${formatPlainNumber(targetValue)} ${processValueAxisLabel}`
+                  : "N/D"}
+              </div>
+            </div>
+
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: CHART_COLORS.textSoft,
+                  marginBottom: 6,
+                }}
+              >
+                Valor real
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color: CHART_COLORS.text,
+                }}
+              >
+                {latestMeasuredValue !== null
+                  ? `${formatPlainNumber(latestMeasuredValue)} ${processValueAxisLabel}`
+                  : "N/D"}
+              </div>
+            </div>
+
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: CHART_COLORS.textSoft,
+                  marginBottom: 6,
+                }}
+              >
+                Variación vs anterior
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color:
+                    variationValue === null
+                      ? CHART_COLORS.text
+                      : variationValue < 0
+                      ? CHART_COLORS.critical
+                      : variationValue > 0
+                      ? CHART_COLORS.ok
+                      : CHART_COLORS.text,
+                }}
+              >
+                {variationValue !== null
+                  ? `${formatDelta(variationValue)} ${processValueAxisLabel}`
+                  : "N/D"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            border: "1px solid #edf2f8",
+            borderRadius: 22,
+            padding: 18,
+            background: "#fbfdff",
+            boxShadow: CHART_COLORS.cardShadowSoft,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: CHART_COLORS.textSoft,
+              marginBottom: 14,
+            }}
+          >
+            Bloque derecha · KPIs
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+            }}
+          >
+            <div
+              style={{
+                background: "#eef4ff",
+                color: CHART_COLORS.navy,
+                border: "1px solid rgba(36,89,195,0.15)",
+                borderRadius: 18,
+                padding: "14px 16px",
+                minHeight: 84,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                boxShadow: "0 10px 25px rgba(17,42,74,0.04)",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: CHART_COLORS.textSoft,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                % cumplimiento
+              </span>
+              <strong
+                style={{
+                  fontSize: 24,
+                  lineHeight: 1.1,
+                  color: CHART_COLORS.navy,
+                }}
+              >
+                {complianceValue !== null ? formatPercent(complianceValue) : "N/D"}
+              </strong>
             </div>
 
             <div
               style={{
-                fontSize: 16,
-                fontWeight: 700,
-                lineHeight: 1.5,
+                background: "#ffffff",
                 color: CHART_COLORS.text,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
+                border: `1px solid ${CHART_COLORS.cardBorder}`,
+                borderRadius: 18,
+                padding: "14px 16px",
+                minHeight: 84,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                boxShadow: "0 10px 25px rgba(17,42,74,0.04)",
               }}
             >
-              {latestObservation}
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: CHART_COLORS.textSoft,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                Estado
+              </span>
+              <strong
+                style={{
+                  fontSize: 24,
+                  lineHeight: 1.1,
+                  color:
+                    latestStatus === "critical"
+                      ? CHART_COLORS.critical
+                      : latestStatus === "warning"
+                      ? "#a16d00"
+                      : CHART_COLORS.ok,
+                }}
+              >
+                {safeDisplay(getStatusLabel(latestStatus))}
+              </strong>
+            </div>
+
+            <div
+              style={{
+                background: "#ffffff",
+                color: CHART_COLORS.text,
+                border: `1px solid ${CHART_COLORS.cardBorder}`,
+                borderRadius: 18,
+                padding: "14px 16px",
+                minHeight: 84,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                boxShadow: "0 10px 25px rgba(17,42,74,0.04)",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: CHART_COLORS.textSoft,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                Warning rule
+              </span>
+              <strong
+                style={{
+                  fontSize: 18,
+                  lineHeight: 1.2,
+                  color: CHART_COLORS.text,
+                }}
+              >
+                {safeDisplay(
+                  formatRule(
+                    selectedDashboardIndicator.warning_operator,
+                    selectedDashboardIndicator.warning_value,
+                    selectedDashboardIndicator.unit || processValueAxisLabel
+                  )
+                )}
+              </strong>
+            </div>
+
+            <div
+              style={{
+                background: "#ffffff",
+                color: CHART_COLORS.text,
+                border: `1px solid ${CHART_COLORS.cardBorder}`,
+                borderRadius: 18,
+                padding: "14px 16px",
+                minHeight: 84,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                boxShadow: "0 10px 25px rgba(17,42,74,0.04)",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: CHART_COLORS.textSoft,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                Critical rule
+              </span>
+              <strong
+                style={{
+                  fontSize: 18,
+                  lineHeight: 1.2,
+                  color: CHART_COLORS.text,
+                }}
+              >
+                {safeDisplay(
+                  formatRule(
+                    selectedDashboardIndicator.critical_operator,
+                    selectedDashboardIndicator.critical_value,
+                    selectedDashboardIndicator.unit || processValueAxisLabel
+                  )
+                )}
+              </strong>
             </div>
           </div>
-        ) : null}
+        </div>
+      </div>
+
+      <div
+        style={{
+          padding: "0 22px 22px",
+        }}
+      >
+        <div
+          style={{
+            borderRadius: 22,
+            padding: "16px 18px",
+            ...observationTone,
+            boxShadow: "0 10px 26px rgba(17,42,74,0.05)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              marginBottom: 8,
+              opacity: 0.9,
+            }}
+          >
+            Bloque abajo · observación
+          </div>
+
+          <div
+            style={{
+              fontSize: 15,
+              lineHeight: 1.55,
+              fontWeight: 600,
+            }}
+          >
+            {latestObservation || "N/D"}
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -1105,7 +1304,8 @@ function renderTrendChart({
       yDomainMax
     );
 
-    const targetLineValue = getIndicatorTargetLineValue(selectedDashboardIndicator);
+    const targetLineValue =
+      getIndicatorTargetLineValue(selectedDashboardIndicator);
 
     return (
       <ResponsiveContainer width="100%" height="100%">
@@ -1122,6 +1322,7 @@ function renderTrendChart({
           <XAxis
             dataKey="rawDate"
             type="category"
+            allowDuplicatedCategory={false}
             interval={0}
             angle={0}
             textAnchor="middle"
@@ -1212,10 +1413,10 @@ function renderTrendChart({
           ) : null}
 
           <Tooltip
+            cursor={{ fill: "rgba(36,89,195,0.08)" }}
             content={
               <CustomDailyTooltip
                 valueAxisLabel={processValueAxisLabel}
-                selectedDashboardIndicator={selectedDashboardIndicator}
               />
             }
           />
@@ -2570,14 +2771,54 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                     })}
                   </div>
 
-                  {isStandardIndicatorSelected && !!processDailySeries.length && (
-                    <TrendLegend
-                      selectedDashboardIndicator={selectedDashboardIndicator}
-                      observationsCount={observationsCount}
-                      processValueAxisLabel={processValueAxisLabel}
-                      compact
-                    />
-                  )}
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "flex",
+                      gap: 14,
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      fontSize: 12,
+                      color: CHART_COLORS.text,
+                    }}
+                  >
+                    <span>
+                      <strong>Unidad:</strong> {processValueAxisLabel}
+                    </span>
+
+                    <span>
+                      <strong>Barras:</strong> valor real por día
+                    </span>
+
+                    <span>
+                      <strong>Línea:</strong> % cumplimiento
+                    </span>
+
+                    <span>
+                      <strong>Línea punteada/meta:</strong>{" "}
+                      {getIndicatorTargetLineValue(selectedDashboardIndicator) !== null
+                        ? `meta objetivo (${formatPlainNumber(
+                            getIndicatorTargetLineValue(selectedDashboardIndicator)
+                          )} ${processValueAxisLabel})`
+                        : "sin meta configurada"}
+                    </span>
+
+                    <span>
+                      <strong>Fondo amarillo:</strong> warning
+                    </span>
+
+                    <span>
+                      <strong>Fondo rojo:</strong> critical
+                    </span>
+
+                    <span>
+                      <strong>* / !</strong> observación
+                    </span>
+
+                    <span>
+                      <strong>Total observaciones:</strong> {observationsCount}
+                    </span>
+                  </div>
                 </section>
 
                 <section
