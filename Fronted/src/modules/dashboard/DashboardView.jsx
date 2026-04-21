@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -366,19 +366,23 @@ function buildIndicatorBackgroundBands(indicator, yDomainMax) {
 }
 
 /**
- * PRIORIDAD REAL DEL HISTÓRICO:
- * 1) value
- * 2) single_value
- * 3) promedio de turnos
+ * CORRECCIÓN CLAVE:
+ * 1) row.value
+ * 2) row.single_value
+ * 3) promedio shifts
  */
 function getMeasuredValueFromHistoryRow(row) {
   if (!row) return null;
 
   const directValue = Number(row.value);
-  if (Number.isFinite(directValue)) return directValue;
+  if (Number.isFinite(directValue)) {
+    return directValue;
+  }
 
   const singleValue = Number(row.single_value);
-  if (Number.isFinite(singleValue)) return singleValue;
+  if (Number.isFinite(singleValue)) {
+    return singleValue;
+  }
 
   const values = [];
 
@@ -398,6 +402,7 @@ function getMeasuredValueFromHistoryRow(row) {
   }
 
   if (!values.length) return null;
+
   return values.reduce((acc, val) => acc + val, 0) / values.length;
 }
 
@@ -564,7 +569,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
       const observation = String(item.observation || "").trim();
 
       return {
-        __chartId: `${recordDate}-${index}`,
+        chartIndex: index,
         rawDate: recordDate,
         date: recordDate,
         record_date: recordDate,
@@ -596,7 +601,10 @@ function buildDailySeriesFromHistory(historyRows, filter) {
         critical_value: item.critical_value,
       };
     })
-  );
+  ).map((item, sortedIndex) => ({
+    ...item,
+    chartIndex: sortedIndex,
+  }));
 }
 
 function PersonProgressLabel(props) {
@@ -766,76 +774,17 @@ function TrendLegend({
   );
 }
 
-function CustomDailyTooltip({ active, payload, valueAxisLabel }) {
-  if (!active || !payload?.length) return null;
+function getVariationRuleOperator(indicator) {
+  if (!indicator) return "";
 
-  const barRow =
-    payload.find((item) => item?.dataKey === "value")?.payload ||
-    payload.find((item) => item?.payload?.originalValue !== undefined)?.payload ||
-    payload[0]?.payload ||
-    {};
-
-  const realIsoDate =
-    getSafeIsoDate(barRow.rawDate) ||
-    getSafeIsoDate(barRow.date) ||
-    getSafeIsoDate(barRow.record_date);
-
-  const formattedDate = formatFullDateEs(realIsoDate);
-
-  return (
-    <div
-      style={{
-        background: "#ffffff",
-        border: "1px solid #d7e3f1",
-        borderRadius: 16,
-        padding: "14px 16px",
-        boxShadow: "0 16px 34px rgba(23,50,77,0.14)",
-        minWidth: 280,
-      }}
-    >
-      <div
-        style={{
-          fontWeight: 800,
-          color: CHART_COLORS.text,
-          marginBottom: 10,
-          fontSize: 16,
-        }}
-      >
-        {formattedDate}
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gap: 8,
-          fontSize: 13,
-          color: CHART_COLORS.text,
-        }}
-      >
-        <div>
-          <strong>Fecha:</strong> {formattedDate}
-        </div>
-
-        <div>
-          <strong>Valor:</strong>{" "}
-          {barRow.originalValue !== null && barRow.originalValue !== undefined
-            ? `${formatPlainNumber(Number(barRow.originalValue))} ${valueAxisLabel}`
-            : "N/D"}
-        </div>
-
-        <div>
-          <strong>Observación:</strong> {safeDisplay(barRow.observation)}
-        </div>
-      </div>
-    </div>
-  );
+  return String(
+    indicator.target_operator ||
+      indicator.warning_operator ||
+      indicator.critical_operator ||
+      ""
+  ).trim();
 }
 
-/**
- * CORRECCIÓN:
- * Si el indicador es de tipo "<" o "<=", bajar es bueno.
- * Entonces la variación visual debe invertirse.
- */
 function getDirectionalVariation(currentValue, previousValue, indicator) {
   const current = Number(currentValue);
   const previous = Number(previousValue);
@@ -845,40 +794,47 @@ function getDirectionalVariation(currentValue, previousValue, indicator) {
   }
 
   const rawDelta = current - previous;
+  const operator = getVariationRuleOperator(indicator);
 
-  const operator = String(
-    indicator?.target_operator ||
-      indicator?.warning_operator ||
-      indicator?.critical_operator ||
-      ""
-  ).trim();
-
-  const lowerIsBetter = operator === "<" || operator === "<=";
-
-  if (lowerIsBetter) {
+  if (operator === "<" || operator === "<=") {
     return previous - current;
   }
 
   return rawDelta;
 }
 
+function getVariationColor(delta) {
+  if (delta === null || delta === undefined || !Number.isFinite(Number(delta))) {
+    return CHART_COLORS.text;
+  }
+
+  if (Number(delta) > 0) return CHART_COLORS.ok;
+  if (Number(delta) < 0) return CHART_COLORS.critical;
+  return CHART_COLORS.text;
+}
+
 function ExecutiveIndicatorCard({
   selectedDashboardIndicator,
+  selectedPoint,
   processDailySeries,
   processValueAxisLabel,
 }) {
   if (!selectedDashboardIndicator) return null;
 
   const sortedSeries = sortByIsoDateAsc(processDailySeries);
-  const latestPoint =
-    sortedSeries.length > 0 ? sortedSeries[sortedSeries.length - 1] : null;
+  if (!sortedSeries.length) return null;
 
-  const previousPoint =
-    sortedSeries.length > 1 ? sortedSeries[sortedSeries.length - 2] : null;
+  const activePoint = selectedPoint || sortedSeries[sortedSeries.length - 1];
 
-  const latestMeasuredValue =
-    latestPoint?.originalValue !== null && latestPoint?.originalValue !== undefined
-      ? Number(latestPoint.originalValue)
+  const activeIndex = sortedSeries.findIndex(
+    (item) => Number(item.chartIndex) === Number(activePoint.chartIndex)
+  );
+
+  const previousPoint = activeIndex > 0 ? sortedSeries[activeIndex - 1] : null;
+
+  const currentMeasuredValue =
+    activePoint?.originalValue !== null && activePoint?.originalValue !== undefined
+      ? Number(activePoint.originalValue)
       : null;
 
   const previousMeasuredValue =
@@ -887,32 +843,33 @@ function ExecutiveIndicatorCard({
       : null;
 
   const complianceValue =
-    latestPoint && Number.isFinite(Number(latestPoint.general))
-      ? Number(latestPoint.general)
+    activePoint && Number.isFinite(Number(activePoint.general))
+      ? Number(activePoint.general)
       : null;
 
   const targetValue = getSafeNumericValue(selectedDashboardIndicator.target_value);
-  const latestStatus = latestPoint
-    ? normalizeStatus(latestPoint.status)
+
+  const currentStatus = activePoint
+    ? normalizeStatus(activePoint.status)
     : normalizeStatus(selectedDashboardIndicator.status);
 
   const variationValue = getDirectionalVariation(
-    latestMeasuredValue,
+    currentMeasuredValue,
     previousMeasuredValue,
     selectedDashboardIndicator
   );
 
-  const latestObservation = String(latestPoint?.observation || "").trim();
-  const statusStyles = getStatusPillStyles(latestStatus);
+  const currentObservation = String(activePoint?.observation || "").trim();
+  const statusStyles = getStatusPillStyles(currentStatus);
 
   const observationTone =
-    latestStatus === "critical"
+    currentStatus === "critical"
       ? {
           background: "#fff6f6",
           border: "1px solid rgba(226,75,75,0.22)",
           color: CHART_COLORS.critical,
         }
-      : latestStatus === "warning"
+      : currentStatus === "warning"
       ? {
           background: "#fffaf0",
           border: "1px solid rgba(244,196,48,0.28)",
@@ -1024,7 +981,7 @@ function ExecutiveIndicatorCard({
               alignSelf: "flex-start",
             }}
           >
-            {safeDisplay(getStatusLabel(latestStatus))}
+            {safeDisplay(getStatusLabel(currentStatus))}
           </span>
         </div>
       </div>
@@ -1074,7 +1031,7 @@ function ExecutiveIndicatorCard({
                   marginBottom: 6,
                 }}
               >
-                Fecha último registro
+                Fecha seleccionada
               </div>
               <div
                 style={{
@@ -1083,7 +1040,7 @@ function ExecutiveIndicatorCard({
                   color: CHART_COLORS.text,
                 }}
               >
-                {safeDisplay(latestPoint?.rawDate, formatDayMonth)}
+                {safeDisplay(activePoint?.rawDate, formatDayMonth)}
               </div>
             </div>
 
@@ -1127,8 +1084,8 @@ function ExecutiveIndicatorCard({
                   color: CHART_COLORS.text,
                 }}
               >
-                {latestMeasuredValue !== null
-                  ? `${formatPlainNumber(latestMeasuredValue)} ${processValueAxisLabel}`
+                {currentMeasuredValue !== null
+                  ? `${formatPlainNumber(currentMeasuredValue)} ${processValueAxisLabel}`
                   : "N/D"}
               </div>
             </div>
@@ -1147,14 +1104,7 @@ function ExecutiveIndicatorCard({
                 style={{
                   fontSize: 18,
                   fontWeight: 800,
-                  color:
-                    variationValue === null
-                      ? CHART_COLORS.text
-                      : variationValue < 0
-                      ? CHART_COLORS.critical
-                      : variationValue > 0
-                      ? CHART_COLORS.ok
-                      : CHART_COLORS.text,
+                  color: getVariationColor(variationValue),
                 }}
               >
                 {variationValue !== null
@@ -1260,14 +1210,14 @@ function ExecutiveIndicatorCard({
                   fontSize: 24,
                   lineHeight: 1.1,
                   color:
-                    latestStatus === "critical"
+                    currentStatus === "critical"
                       ? CHART_COLORS.critical
-                      : latestStatus === "warning"
+                      : currentStatus === "warning"
                       ? "#a16d00"
                       : CHART_COLORS.ok,
                 }}
               >
-                {safeDisplay(getStatusLabel(latestStatus))}
+                {safeDisplay(getStatusLabel(currentStatus))}
               </strong>
             </div>
 
@@ -1391,7 +1341,7 @@ function ExecutiveIndicatorCard({
               fontWeight: 600,
             }}
           >
-            {latestObservation || "N/D"}
+            {currentObservation || "N/D"}
           </div>
         </div>
       </div>
@@ -1406,6 +1356,8 @@ function renderTrendChart({
   processValueAxisLabel,
   selectedDashboardIndicator,
   expanded = false,
+  selectedTrendIndex = -1,
+  onSelectTrendBar = null,
 }) {
   if (isStandardIndicatorSelected) {
     const yDomainMax = resolveChartDomainMax(
@@ -1434,18 +1386,15 @@ function renderTrendChart({
           <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
 
           <XAxis
-            dataKey="__chartId"
+            dataKey="rawDate"
             type="category"
-            allowDuplicatedCategory={true}
+            allowDuplicatedCategory={false}
             interval={0}
             angle={0}
             textAnchor="middle"
             minTickGap={0}
             height={expanded ? 46 : 40}
-            tickFormatter={(_, index) => {
-              const row = processDailySeries[index];
-              return row ? formatDayMonth(row.rawDate) : "";
-            }}
+            tickFormatter={(value) => formatDayMonth(value)}
             tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
             label={
               expanded
@@ -1529,24 +1478,30 @@ function renderTrendChart({
             />
           ) : null}
 
-          <Tooltip
-            cursor={{ fill: "rgba(36,89,195,0.08)" }}
-            content={<CustomDailyTooltip valueAxisLabel={processValueAxisLabel} />}
-          />
-
           <Bar
             yAxisId="left"
             dataKey="value"
             name={processValueAxisLabel}
             radius={[10, 10, 0, 0]}
             maxBarSize={expanded ? 46 : 34}
+            onClick={(data, index) => {
+              if (typeof onSelectTrendBar === "function") {
+                onSelectTrendBar(index, data);
+              }
+            }}
           >
-            {processDailySeries.map((entry, index) => (
-              <Cell
-                key={`cell-${entry.__chartId || index}`}
-                fill={entry.fill || CHART_COLORS.ok}
-              />
-            ))}
+            {processDailySeries.map((entry, index) => {
+              const isSelected = index === selectedTrendIndex;
+              return (
+                <Cell
+                  key={`cell-${entry.rawDate || index}`}
+                  fill={entry.fill || CHART_COLORS.ok}
+                  stroke={isSelected ? CHART_COLORS.navy : "transparent"}
+                  strokeWidth={isSelected ? 3 : 0}
+                  style={{ cursor: "pointer" }}
+                />
+              );
+            })}
             <LabelList content={<DailyValueTopLabel />} />
             <LabelList content={<ObservationMarkerLabel />} />
           </Bar>
@@ -1559,7 +1514,8 @@ function renderTrendChart({
             stroke={CHART_COLORS.navy}
             strokeWidth={3}
             dot={{ r: expanded ? 4 : 3, fill: CHART_COLORS.navy }}
-            activeDot={{ r: expanded ? 6 : 5 }}
+            activeDot={false}
+            isAnimationActive={false}
           />
 
           <Scatter
@@ -1631,6 +1587,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
   const [indicatorHistoryRows, setIndicatorHistoryRows] = useState([]);
   const [historySummary, setHistorySummary] = useState(null);
   const [isTrendExpanded, setIsTrendExpanded] = useState(false);
+  const [selectedTrendIndex, setSelectedTrendIndex] = useState(-1);
 
   const [dashboardFilter, setDashboardFilter] = useState({
     process_id: "",
@@ -1676,6 +1633,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       setIsTrendExpanded(false);
       setIndicatorHistoryRows([]);
       setHistorySummary(null);
+      setSelectedTrendIndex(-1);
 
       const filters = {
         ...dashboardFilter,
@@ -1931,7 +1889,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     }
 
     return sortByIsoDateAsc(
-      (dashboardData?.trend || []).map((item, index) => {
+      (dashboardData?.trend || []).map((item) => {
         const numericValue = Number(item.value || 0);
         const status = normalizeStatus(item.status || "ok");
         const realDate = getSafeIsoDate(
@@ -1939,7 +1897,6 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
         );
 
         return {
-          __chartId: `${realDate}-${index}`,
           rawDate: realDate,
           date: realDate,
           record_date: realDate,
@@ -1970,6 +1927,33 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       isMatchingStatusFilter(item.status, dashboardFilter.status_filter)
     );
   }, [processDailySeriesRaw, dashboardFilter.status_filter]);
+
+  useEffect(() => {
+    if (!processDailySeries.length) {
+      setSelectedTrendIndex(-1);
+      return;
+    }
+
+    if (
+      selectedTrendIndex < 0 ||
+      selectedTrendIndex >= processDailySeries.length
+    ) {
+      setSelectedTrendIndex(processDailySeries.length - 1);
+    }
+  }, [processDailySeries, selectedTrendIndex]);
+
+  const selectedTrendPoint = useMemo(() => {
+    if (!processDailySeries.length) return null;
+
+    if (
+      selectedTrendIndex >= 0 &&
+      selectedTrendIndex < processDailySeries.length
+    ) {
+      return processDailySeries[selectedTrendIndex];
+    }
+
+    return processDailySeries[processDailySeries.length - 1];
+  }, [processDailySeries, selectedTrendIndex]);
 
   const processValueAxisLabel = useMemo(() => {
     if (!selectedDashboardIndicator) return "Valor";
@@ -2830,6 +2814,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               {isStandardIndicatorSelected && (
                 <ExecutiveIndicatorCard
                   selectedDashboardIndicator={selectedDashboardIndicator}
+                  selectedPoint={selectedTrendPoint}
                   processDailySeries={processDailySeries}
                   processValueAxisLabel={processValueAxisLabel}
                 />
@@ -2882,6 +2867,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       processValueAxisLabel,
                       selectedDashboardIndicator,
                       expanded: false,
+                      selectedTrendIndex,
+                      onSelectTrendBar: (index) => setSelectedTrendIndex(index),
                     })}
                   </div>
 
@@ -3364,6 +3351,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   processValueAxisLabel,
                   selectedDashboardIndicator,
                   expanded: true,
+                  selectedTrendIndex,
+                  onSelectTrendBar: (index) => setSelectedTrendIndex(index),
                 })}
               </div>
             </div>
