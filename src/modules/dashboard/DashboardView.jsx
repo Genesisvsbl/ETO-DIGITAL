@@ -674,11 +674,83 @@ function DailyValueTopLabel(props) {
   );
 }
 
+function TrendLegend({
+  selectedDashboardIndicator,
+  observationsCount,
+  processValueAxisLabel,
+  compact = false,
+  processName,
+  weekRangeLabel,
+  showRange = false,
+}) {
+  const targetValue = getIndicatorTargetLineValue(selectedDashboardIndicator);
+
+  return (
+    <div
+      style={{
+        marginTop: compact ? 10 : 0,
+        display: "flex",
+        gap: compact ? 14 : 18,
+        flexWrap: "wrap",
+        alignItems: "center",
+        fontSize: compact ? 12 : 13,
+        color: CHART_COLORS.text,
+      }}
+    >
+      {processName ? (
+        <span>
+          <strong>Proceso:</strong> {processName}
+        </span>
+      ) : null}
+
+      <span>
+        <strong>Unidad:</strong> {processValueAxisLabel}
+      </span>
+
+      <span>
+        <strong>Barras:</strong> valor real por fecha histórica
+      </span>
+
+      <span>
+        <strong>Línea:</strong> % cumplimiento
+      </span>
+
+      <span>
+        <strong>Línea punteada/meta:</strong>{" "}
+        {targetValue !== null
+          ? `meta objetivo (${formatPlainNumber(targetValue)} ${processValueAxisLabel})`
+          : "sin meta configurada"}
+      </span>
+
+      <span>
+        <strong>Fondo amarillo:</strong> warning
+      </span>
+
+      <span>
+        <strong>Fondo rojo:</strong> critical
+      </span>
+
+      <span>
+        <strong>* / !</strong> observación
+      </span>
+
+      <span>
+        <strong>Total observaciones:</strong> {observationsCount}
+      </span>
+
+      {showRange && weekRangeLabel ? (
+        <span>
+          <strong>Rango:</strong> {weekRangeLabel}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 /**
- * Tooltip simplificado:
- * - usa EXACTAMENTE la barra activa
- * - NO reconstruye fecha
- * - NO usa el label del eje como fuente de verdad
+ * Tooltip corregido:
+ * - toma EXCLUSIVAMENTE la serie de barras (dataKey === "value")
+ * - fecha y valor salen de la misma fila histórica que construyó la barra
  */
 function CustomDailyTooltip({
   active,
@@ -687,11 +759,17 @@ function CustomDailyTooltip({
 }) {
   if (!active || !payload?.length) return null;
 
-  const row = payload?.[0]?.payload || {};
+  const barRow =
+    payload.find((item) => item?.dataKey === "value")?.payload ||
+    payload.find((item) => item?.name === valueAxisLabel)?.payload ||
+    payload.find((item) => item?.payload?.originalValue !== undefined)?.payload ||
+    payload[0]?.payload ||
+    {};
+
   const realIsoDate =
-    getSafeIsoDate(row.rawDate) ||
-    getSafeIsoDate(row.date) ||
-    getSafeIsoDate(row.record_date);
+    getSafeIsoDate(barRow.rawDate) ||
+    getSafeIsoDate(barRow.date) ||
+    getSafeIsoDate(barRow.record_date);
 
   const formattedDate = formatFullDateEs(realIsoDate);
 
@@ -731,23 +809,19 @@ function CustomDailyTooltip({
 
         <div>
           <strong>Valor:</strong>{" "}
-          {row.originalValue !== null && row.originalValue !== undefined
-            ? `${formatPlainNumber(Number(row.originalValue))} ${valueAxisLabel}`
+          {barRow.originalValue !== null && barRow.originalValue !== undefined
+            ? `${formatPlainNumber(Number(barRow.originalValue))} ${valueAxisLabel}`
             : "N/D"}
         </div>
 
         <div>
-          <strong>Observación:</strong> {safeDisplay(row.observation)}
+          <strong>Observación:</strong> {safeDisplay(barRow.observation)}
         </div>
       </div>
     </div>
   );
 }
 
-/**
- * Bloque principal como lo tenías antes,
- * pero tomando la info desde la serie histórica ya corregida.
- */
 function ExecutiveIndicatorCard({
   selectedDashboardIndicator,
   processDailySeries,
@@ -2771,54 +2845,14 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                     })}
                   </div>
 
-                  <div
-                    style={{
-                      marginTop: 10,
-                      display: "flex",
-                      gap: 14,
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                      fontSize: 12,
-                      color: CHART_COLORS.text,
-                    }}
-                  >
-                    <span>
-                      <strong>Unidad:</strong> {processValueAxisLabel}
-                    </span>
-
-                    <span>
-                      <strong>Barras:</strong> valor real por día
-                    </span>
-
-                    <span>
-                      <strong>Línea:</strong> % cumplimiento
-                    </span>
-
-                    <span>
-                      <strong>Línea punteada/meta:</strong>{" "}
-                      {getIndicatorTargetLineValue(selectedDashboardIndicator) !== null
-                        ? `meta objetivo (${formatPlainNumber(
-                            getIndicatorTargetLineValue(selectedDashboardIndicator)
-                          )} ${processValueAxisLabel})`
-                        : "sin meta configurada"}
-                    </span>
-
-                    <span>
-                      <strong>Fondo amarillo:</strong> warning
-                    </span>
-
-                    <span>
-                      <strong>Fondo rojo:</strong> critical
-                    </span>
-
-                    <span>
-                      <strong>* / !</strong> observación
-                    </span>
-
-                    <span>
-                      <strong>Total observaciones:</strong> {observationsCount}
-                    </span>
-                  </div>
+                  {isStandardIndicatorSelected && !!processDailySeries.length && (
+                    <TrendLegend
+                      selectedDashboardIndicator={selectedDashboardIndicator}
+                      observationsCount={observationsCount}
+                      processValueAxisLabel={processValueAxisLabel}
+                      compact
+                    />
+                  )}
                 </section>
 
                 <section
