@@ -367,23 +367,20 @@ function buildIndicatorBackgroundBands(indicator, yDomainMax) {
 
 /**
  * CORRECCIÓN CLAVE:
- * Para el dashboard debe tomar el valor REAL del histórico.
- * Prioridad:
- * 1. row.value
- * 2. row.single_value
- * 3. promedio de shifts
+ * Para indicadores normales, el valor real debe salir igual que en HISTORY:
+ * - si capture_mode === "single" => single_value
+ * - si no => promedio de shifts válidos
+ *
+ * SOLO como respaldo muy final usamos row.value.
  */
 function getMeasuredValueFromHistoryRow(row) {
   if (!row) return null;
 
-  const directValue = Number(row.value);
-  if (Number.isFinite(directValue)) {
-    return directValue;
-  }
+  const captureMode = String(row.capture_mode || "").trim().toLowerCase();
 
-  const singleValue = Number(row.single_value);
-  if (Number.isFinite(singleValue)) {
-    return singleValue;
+  if (captureMode === "single") {
+    const singleValue = Number(row.single_value);
+    return Number.isFinite(singleValue) ? singleValue : null;
   }
 
   const values = [];
@@ -403,9 +400,12 @@ function getMeasuredValueFromHistoryRow(row) {
     if (Number.isFinite(c)) values.push(c);
   }
 
-  if (!values.length) return null;
+  if (values.length) {
+    return values.reduce((acc, val) => acc + val, 0) / values.length;
+  }
 
-  return values.reduce((acc, val) => acc + val, 0) / values.length;
+  const fallbackValue = Number(row.value);
+  return Number.isFinite(fallbackValue) ? fallbackValue : null;
 }
 
 function getDaysInMonth(year, month) {
@@ -592,6 +592,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
         shift_a: item.shift_a,
         shift_b: item.shift_b,
         shift_c: item.shift_c,
+        capture_mode: item.capture_mode,
 
         observation,
         hasObservation: !!observation,
@@ -872,8 +873,7 @@ function ExecutiveIndicatorCard({
     : normalizeStatus(selectedDashboardIndicator.status);
 
   const variationValue =
-    latestMeasuredValue !== null &&
-    previousMeasuredValue !== null
+    latestMeasuredValue !== null && previousMeasuredValue !== null
       ? Number(latestMeasuredValue) - Number(previousMeasuredValue)
       : null;
 
