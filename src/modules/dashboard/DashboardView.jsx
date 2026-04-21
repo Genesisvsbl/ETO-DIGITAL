@@ -263,7 +263,11 @@ function resolveChartDomainMax(processDailySeries, selectedDashboardIndicator) {
 }
 
 function buildIndicatorBackgroundBands(indicator, yDomainMax) {
-  if (!indicator || !Number.isFinite(Number(yDomainMax)) || Number(yDomainMax) <= 0) {
+  if (
+    !indicator ||
+    !Number.isFinite(Number(yDomainMax)) ||
+    Number(yDomainMax) <= 0
+  ) {
     return [];
   }
 
@@ -369,8 +373,10 @@ function getMeasuredValueFromHistoryRow(row) {
   if (!row) return null;
 
   if (row.capture_mode === "single") {
-    const value = Number(row.single_value);
-    return Number.isFinite(value) ? value : null;
+    const singleValue = Number(
+      row.single_value ?? row.value ?? row.measured_value ?? null
+    );
+    return Number.isFinite(singleValue) ? singleValue : null;
   }
 
   const values = [];
@@ -544,7 +550,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
   const filteredRows = filterHistoryRowsByPeriod(historyRows, filter);
 
   return sortByIsoDateAsc(
-    filteredRows.map((item) => {
+    filteredRows.map((item, index) => {
       const recordDate = getSafeIsoDate(item.record_date);
       const realValue = getMeasuredValueFromHistoryRow(item);
       const general = normalizeGeneralToPercent(item.general || 0);
@@ -552,6 +558,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
       const observation = String(item.observation || "").trim();
 
       return {
+        id: item.id || `${recordDate}-${index}`,
         rawDate: recordDate,
         date: recordDate,
         record_date: recordDate,
@@ -747,29 +754,28 @@ function TrendLegend({
   );
 }
 
-/**
- * Tooltip corregido:
- * - toma EXCLUSIVAMENTE la serie de barras (dataKey === "value")
- * - fecha y valor salen de la misma fila histórica que construyó la barra
- */
 function CustomDailyTooltip({
   active,
-  payload,
+  label,
   valueAxisLabel,
+  processDailySeries,
 }) {
-  if (!active || !payload?.length) return null;
+  if (!active) return null;
+
+  const activeIsoDate = getSafeIsoDate(label);
 
   const barRow =
-    payload.find((item) => item?.dataKey === "value")?.payload ||
-    payload.find((item) => item?.name === valueAxisLabel)?.payload ||
-    payload.find((item) => item?.payload?.originalValue !== undefined)?.payload ||
-    payload[0]?.payload ||
-    {};
+    (Array.isArray(processDailySeries)
+      ? processDailySeries.find(
+          (item) => getSafeIsoDate(item.rawDate) === activeIsoDate
+        )
+      : null) || {};
 
   const realIsoDate =
     getSafeIsoDate(barRow.rawDate) ||
     getSafeIsoDate(barRow.date) ||
-    getSafeIsoDate(barRow.record_date);
+    getSafeIsoDate(barRow.record_date) ||
+    activeIsoDate;
 
   const formattedDate = formatFullDateEs(realIsoDate);
 
@@ -1491,6 +1497,7 @@ function renderTrendChart({
             content={
               <CustomDailyTooltip
                 valueAxisLabel={processValueAxisLabel}
+                processDailySeries={processDailySeries}
               />
             }
           />
@@ -1504,7 +1511,7 @@ function renderTrendChart({
           >
             {processDailySeries.map((entry, index) => (
               <Cell
-                key={`cell-${entry.rawDate || index}`}
+                key={`cell-${entry.id || entry.rawDate || index}`}
                 fill={entry.fill || CHART_COLORS.ok}
               />
             ))}
