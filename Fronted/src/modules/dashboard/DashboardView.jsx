@@ -181,30 +181,26 @@ function getSafeIsoDate(value) {
   return raw.slice(0, 10);
 }
 
-function formatDayOnly(value) {
-  const iso = getSafeIsoDate(value);
-  if (!iso) return "";
-  return String(Number(iso.slice(8, 10)));
-}
-
 function formatDayMonth(value) {
   const iso = getSafeIsoDate(value);
   if (!iso) return "N/D";
 
-  const [, month, day] = iso.split("-");
+  const [year, month, day] = iso.split("-");
   const monthIndex = Number(month) - 1;
   const monthName = MONTHS_ES[monthIndex] || month;
-  return `${day}-${monthName}`;
+
+  return `${Number(day)} ${monthName.slice(0, 3)}`;
 }
 
-function buildIsoFromFilterDay(dayLabel, filter) {
-  const day = Number(dayLabel);
-  const year = Number(filter?.year);
-  const month = Number(filter?.month);
+function formatFullDateEs(value) {
+  const iso = getSafeIsoDate(value);
+  if (!iso) return "N/D";
 
-  if (!day || !year || !month) return "";
+  const [year, month, day] = iso.split("-");
+  const monthIndex = Number(month) - 1;
+  const monthName = MONTHS_ES[monthIndex] || month;
 
-  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return `${Number(day)} de ${monthName} de ${year}`;
 }
 
 function getIndicatorTargetLineValue(indicator) {
@@ -476,7 +472,9 @@ function filterHistoryRowsByPeriod(historyRows, filter) {
     if (!selectedDay) return sorted;
 
     return sorted.filter((row) => {
-      const day = Number(getSafeIsoDate(row.record_date).slice(8, 10));
+      const iso = getSafeIsoDate(row.record_date);
+      if (!iso) return false;
+      const day = Number(iso.slice(8, 10));
       return day === selectedDay;
     });
   }
@@ -491,7 +489,9 @@ function filterHistoryRowsByPeriod(historyRows, filter) {
     if (!range) return sorted;
 
     return sorted.filter((row) => {
-      const day = Number(getSafeIsoDate(row.record_date).slice(8, 10));
+      const iso = getSafeIsoDate(row.record_date);
+      if (!iso) return false;
+      const day = Number(iso.slice(8, 10));
       return day >= range.start && day <= range.end;
     });
   }
@@ -556,38 +556,41 @@ function getPreviousHistoryRecord(historyRows) {
 function buildDailySeriesFromHistory(historyRows, filter) {
   const filteredRows = filterHistoryRowsByPeriod(historyRows, filter);
 
-  return filteredRows.map((item) => {
-    const recordDate = getSafeIsoDate(item.record_date);
-    const realValue = getMeasuredValueFromHistoryRow(item);
-    const general = normalizeGeneralToPercent(item.general || 0);
-    const status = normalizeStatus(item.status);
-    const observation = String(item.observation || "").trim();
+  return [...filteredRows]
+    .map((item) => {
+      const recordDate = getSafeIsoDate(item.record_date);
+      const realValue = getMeasuredValueFromHistoryRow(item);
+      const general = normalizeGeneralToPercent(item.general || 0);
+      const status = normalizeStatus(item.status);
+      const observation = String(item.observation || "").trim();
 
-    return {
-      rawDate: recordDate,
-      date: recordDate,
-      xLabel: formatDayOnly(recordDate),
-      fullDateLabel: formatDayMonth(recordDate),
-      shortLabel: formatDayMonth(recordDate),
-      value: Number.isFinite(realValue) ? realValue : 0,
-      originalValue: realValue,
-      trendValue: Number.isFinite(realValue) ? realValue : 0,
-      general,
-      unit: item.unit || "",
-      status,
-      fill: getBarColorByStatus(status),
-      single_value: item.single_value,
-      shift_a: item.shift_a,
-      shift_b: item.shift_b,
-      shift_c: item.shift_c,
-      observation,
-      hasObservation: !!observation,
-      observationMarkerY: Number.isFinite(realValue) ? realValue : 0,
-      target_value: item.target_value,
-      warning_value: item.warning_value,
-      critical_value: item.critical_value,
-    };
-  });
+      return {
+        rawDate: recordDate,
+        date: recordDate,
+        record_date: recordDate,
+        xLabel: formatDayMonth(recordDate),
+        fullDateLabel: formatFullDateEs(recordDate),
+        shortLabel: formatDayMonth(recordDate),
+        value: Number.isFinite(realValue) ? realValue : 0,
+        originalValue: realValue,
+        trendValue: Number.isFinite(realValue) ? realValue : 0,
+        general,
+        unit: item.unit || "",
+        status,
+        fill: getBarColorByStatus(status),
+        single_value: item.single_value,
+        shift_a: item.shift_a,
+        shift_b: item.shift_b,
+        shift_c: item.shift_c,
+        observation,
+        hasObservation: !!observation,
+        observationMarkerY: Number.isFinite(realValue) ? realValue : 0,
+        target_value: item.target_value,
+        warning_value: item.warning_value,
+        critical_value: item.critical_value,
+      };
+    })
+    .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate));
 }
 
 function PersonProgressLabel(props) {
@@ -830,25 +833,22 @@ function TrendLegend({
 function CustomDailyTooltip({
   active,
   payload,
-  label,
   valueAxisLabel,
   selectedDashboardIndicator,
-  dashboardFilter,
 }) {
   if (!active || !payload?.length) return null;
 
   const payloadRow =
-    payload.find((item) => item?.payload?.rawDate || item?.payload?.fullDateLabel)
-      ?.payload ||
+    payload.find((item) => item?.payload?.rawDate)?.payload ||
     payload.find((item) => item?.dataKey === "value")?.payload ||
     payload.find((item) => item?.payload)?.payload ||
     {};
 
-  const fallbackIso = buildIsoFromFilterDay(label, dashboardFilter);
+  const realIsoDate =
+    payloadRow.rawDate || payloadRow.date || payloadRow.record_date || "";
 
   const formattedDate =
-    payloadRow.fullDateLabel ||
-    formatDayMonth(payloadRow.rawDate || payloadRow.date || fallbackIso);
+    payloadRow.fullDateLabel || formatFullDateEs(realIsoDate);
 
   const targetValue = getIndicatorTargetLineValue(selectedDashboardIndicator);
 
@@ -1181,7 +1181,7 @@ function ExecutiveIndicatorCard({
                   color: CHART_COLORS.text,
                 }}
               >
-                {safeDisplay(latestRecord?.record_date, formatDayMonth)}
+                {safeDisplay(latestRecord?.record_date, formatFullDateEs)}
               </div>
             </div>
 
@@ -1380,7 +1380,6 @@ function renderTrendChart({
   dashboardData,
   processValueAxisLabel,
   selectedDashboardIndicator,
-  dashboardFilter,
   expanded = false,
 }) {
   if (isStandardIndicatorSelected) {
@@ -1504,7 +1503,6 @@ function renderTrendChart({
               <CustomDailyTooltip
                 valueAxisLabel={processValueAxisLabel}
                 selectedDashboardIndicator={selectedDashboardIndicator}
-                dashboardFilter={dashboardFilter}
               />
             }
           />
@@ -1558,8 +1556,9 @@ function renderTrendChart({
               ...item,
               rawDate: realDate,
               date: realDate,
-              xLabel: formatDayOnly(realDate),
-              fullDateLabel: formatDayMonth(realDate),
+              record_date: realDate,
+              xLabel: formatDayMonth(realDate),
+              fullDateLabel: formatFullDateEs(realDate),
               shortLabel: formatDayMonth(realDate),
             };
           })
@@ -1854,13 +1853,14 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       .map((item) => {
         const numericValue = Number(item.value || 0);
         const status = normalizeStatus(item.status || "ok");
-        const realDate = getSafeIsoDate(item.label);
+        const realDate = getSafeIsoDate(item.record_date || item.date || item.label);
 
         return {
           rawDate: realDate,
           date: realDate,
-          xLabel: formatDayOnly(realDate),
-          fullDateLabel: formatDayMonth(realDate),
+          record_date: realDate,
+          xLabel: formatDayMonth(realDate),
+          fullDateLabel: formatFullDateEs(realDate),
           shortLabel: formatDayMonth(realDate),
           value: Number.isFinite(numericValue) ? numericValue : 0,
           originalValue: Number.isFinite(numericValue) ? numericValue : null,
@@ -2331,7 +2331,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
             <div className="subsection-title">Vista ejecutiva por proceso</div>
             <div className="process-overview-grid compact-process-grid">
               {(dashboardOverview.process_cards || [])
-                .map((item) => {
+                .map((item, index) => {
                   const value = Number(item.average_general || 0);
 
                   let derivedStatus = "ok";
@@ -2341,6 +2341,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   return {
                     ...item,
                     status: normalizeStatus(item.status || derivedStatus),
+                    rankIndex: index,
                   };
                 })
                 .filter((item) =>
@@ -2349,7 +2350,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                     dashboardFilter.status_filter
                   )
                 )
-                .map((item, index) => (
+                .map((item) => (
                   <div
                     key={item.process_name}
                     className="process-card executive-process-card clean-process-card"
@@ -2360,7 +2361,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       background: "#ffffff",
                     }}
                   >
-                    <div className="process-rank-chip">#{index + 1}</div>
+                    <div className="process-rank-chip">#{item.rankIndex + 1}</div>
                     <div className="process-card-title">
                       {safeDisplay(item.process_name)}
                     </div>
@@ -2797,7 +2798,6 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       dashboardData,
                       processValueAxisLabel,
                       selectedDashboardIndicator,
-                      dashboardFilter,
                       expanded: false,
                     })}
                   </div>
@@ -3282,7 +3282,6 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   dashboardData,
                   processValueAxisLabel,
                   selectedDashboardIndicator,
-                  dashboardFilter,
                   expanded: true,
                 })}
               </div>
