@@ -828,16 +828,12 @@ function CustomDailyTooltip({
 
   const activeIsoDate = getSafeIsoDate(label);
 
-  const payloadRows = payload
-    .map((item) => item?.payload)
-    .filter(Boolean);
+  const payloadRows = payload.map((item) => item?.payload).filter(Boolean);
 
   const row =
     payloadRows.find((item) => getSafeIsoDate(item?.rawDate) === activeIsoDate) ||
     payloadRows.find((item) => getSafeIsoDate(item?.date) === activeIsoDate) ||
-    payloadRows.find(
-      (item) => getSafeIsoDate(item?.record_date) === activeIsoDate
-    ) ||
+    payloadRows.find((item) => getSafeIsoDate(item?.record_date) === activeIsoDate) ||
     payloadRows[0] ||
     {};
 
@@ -979,57 +975,18 @@ function ExecutiveIndicatorCard({
   if (!selectedDashboardIndicator) return null;
 
   const sortedSeries = sortByIsoDateAsc(processDailySeries);
-  const latestPoint = sortedSeries.length ? sortedSeries[sortedSeries.length - 1] : null;
-  const previousPoint =
-    sortedSeries.length > 1 ? sortedSeries[sortedSeries.length - 2] : null;
+  const latestPoint =
+    sortedSeries.length > 0 ? sortedSeries[sortedSeries.length - 1] : null;
+
+  if (!latestPoint) return null;
 
   const latestMeasuredValue =
     latestPoint?.originalValue !== null && latestPoint?.originalValue !== undefined
       ? Number(latestPoint.originalValue)
       : null;
 
-  const previousMeasuredValue =
-    previousPoint?.originalValue !== null && previousPoint?.originalValue !== undefined
-      ? Number(previousPoint.originalValue)
-      : null;
-
-  const complianceValue =
-    latestPoint && Number.isFinite(Number(latestPoint.general))
-      ? Number(latestPoint.general)
-      : null;
-
-  const targetValue = getSafeNumericValue(selectedDashboardIndicator.target_value);
-  const latestStatus = latestPoint
-    ? normalizeStatus(latestPoint.status)
-    : normalizeStatus(selectedDashboardIndicator.status);
-
-  const variationValue =
-    latestMeasuredValue !== null &&
-    previousMeasuredValue !== null
-      ? latestMeasuredValue - previousMeasuredValue
-      : null;
-
   const latestObservation = String(latestPoint?.observation || "").trim();
-  const statusStyles = getStatusPillStyles(latestStatus);
-
-  const observationTone =
-    latestStatus === "critical"
-      ? {
-          background: "#fff6f6",
-          border: "1px solid rgba(226,75,75,0.22)",
-          color: CHART_COLORS.critical,
-        }
-      : latestStatus === "warning"
-      ? {
-          background: "#fffaf0",
-          border: "1px solid rgba(244,196,48,0.28)",
-          color: "#946400",
-        }
-      : {
-          background: "#f5fbf8",
-          border: "1px solid rgba(57,169,107,0.20)",
-          color: CHART_COLORS.ok,
-        };
+  const hasObservation = !!latestObservation;
 
   return (
     <section
@@ -1037,120 +994,67 @@ function ExecutiveIndicatorCard({
       style={{
         padding: 0,
         overflow: "hidden",
-        borderRadius: 24,
+        borderRadius: 28,
         border: `1px solid ${CHART_COLORS.cardBorder}`,
         boxShadow: CHART_COLORS.cardShadow,
-        background: "#ffffff",
+        background: "linear-gradient(180deg, #f8fbff 0%, #ffffff 100%)",
       }}
     >
       <div
         style={{
-          padding: "22px 22px 16px",
+          padding: "20px 22px 12px",
           borderBottom: "1px solid #eef3fa",
           background:
-            "linear-gradient(180deg, rgba(238,244,255,0.55) 0%, rgba(255,255,255,1) 100%)",
+            "linear-gradient(180deg, rgba(238,244,255,0.75) 0%, rgba(255,255,255,1) 100%)",
         }}
       >
         <div
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 16,
-            alignItems: "flex-start",
-            flexWrap: "wrap",
+            fontSize: 12,
+            fontWeight: 800,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: CHART_COLORS.textSoft,
+            marginBottom: 8,
           }}
         >
-          <div>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 800,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                color: CHART_COLORS.textSoft,
-                marginBottom: 6,
-              }}
-            >
-              Indicador seleccionado
-            </div>
-
-            <h3
-              style={{
-                margin: 0,
-                color: CHART_COLORS.text,
-                fontSize: 24,
-                lineHeight: 1.12,
-              }}
-            >
-              {selectedDashboardIndicator.code} - {selectedDashboardIndicator.name}
-            </h3>
-
-            <div
-              style={{
-                marginTop: 8,
-                display: "flex",
-                gap: 10,
-                flexWrap: "wrap",
-                color: CHART_COLORS.textSoft,
-                fontSize: 13,
-              }}
-            >
-              <span>
-                Frecuencia:{" "}
-                <strong style={{ color: CHART_COLORS.text }}>
-                  {safeDisplay(
-                    selectedDashboardIndicator.frequency
-                      ? formatFrequencyLabel(selectedDashboardIndicator.frequency)
-                      : null
-                  )}
-                </strong>
-              </span>
-              <span>
-                Captura:{" "}
-                <strong style={{ color: CHART_COLORS.text }}>
-                  {safeDisplay(
-                    selectedDashboardIndicator.capture_mode
-                      ? formatCaptureModeLabel(
-                          selectedDashboardIndicator.capture_mode
-                        )
-                      : null
-                  )}
-                </strong>
-              </span>
-            </div>
-          </div>
-
-          <span
-            style={{
-              ...statusStyles,
-              padding: "8px 14px",
-              borderRadius: 999,
-              fontSize: 12,
-              fontWeight: 900,
-              letterSpacing: "0.08em",
-              alignSelf: "flex-start",
-            }}
-          >
-            {safeDisplay(getStatusLabel(latestStatus))}
-          </span>
+          Resumen del último registro
         </div>
+
+        <h3
+          style={{
+            margin: 0,
+            color: CHART_COLORS.text,
+            fontSize: 22,
+            lineHeight: 1.15,
+          }}
+        >
+          {safeDisplay(selectedDashboardIndicator?.code)} -{" "}
+          {safeDisplay(selectedDashboardIndicator?.name)}
+        </h3>
       </div>
 
       <div
         style={{
           padding: 22,
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 1.55fr) minmax(280px, 1fr)",
-          gap: 18,
+          gridTemplateColumns: hasObservation
+            ? "minmax(260px, 0.9fr) minmax(260px, 0.9fr) minmax(320px, 1.2fr)"
+            : "minmax(260px, 1fr) minmax(260px, 1fr)",
+          gap: 16,
         }}
       >
         <div
           style={{
-            border: "1px solid #edf2f8",
             borderRadius: 22,
-            padding: 18,
+            border: "1px solid #e7eef7",
             background: "#ffffff",
             boxShadow: CHART_COLORS.cardShadowSoft,
+            padding: "18px 20px",
+            minHeight: 120,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
           }}
         >
           <div
@@ -1160,125 +1064,34 @@ function ExecutiveIndicatorCard({
               letterSpacing: "0.08em",
               textTransform: "uppercase",
               color: CHART_COLORS.textSoft,
-              marginBottom: 14,
             }}
           >
-            BLOQUE IZQUIERDA · INFO PRINCIPAL
+            Fecha
           </div>
 
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(140px, 1fr))",
-              gap: 14,
+              fontSize: 28,
+              fontWeight: 900,
+              lineHeight: 1.1,
+              color: CHART_COLORS.navy,
             }}
           >
-            <div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: CHART_COLORS.textSoft,
-                  marginBottom: 6,
-                }}
-              >
-                Fecha último registro
-              </div>
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 800,
-                  color: CHART_COLORS.text,
-                }}
-              >
-                {latestPoint?.fullDateLabel || "N/D"}
-              </div>
-            </div>
-
-            <div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: CHART_COLORS.textSoft,
-                  marginBottom: 6,
-                }}
-              >
-                Meta
-              </div>
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 800,
-                  color: CHART_COLORS.text,
-                }}
-              >
-                {targetValue !== null
-                  ? `${formatPlainNumber(targetValue)} ${processValueAxisLabel}`
-                  : "N/D"}
-              </div>
-            </div>
-
-            <div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: CHART_COLORS.textSoft,
-                  marginBottom: 6,
-                }}
-              >
-                Valor real
-              </div>
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 800,
-                  color: CHART_COLORS.text,
-                }}
-              >
-                {latestMeasuredValue !== null
-                  ? `${formatPlainNumber(latestMeasuredValue)} ${processValueAxisLabel}`
-                  : "N/D"}
-              </div>
-            </div>
-
-            <div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: CHART_COLORS.textSoft,
-                  marginBottom: 6,
-                }}
-              >
-                Variación vs anterior
-              </div>
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 800,
-                  color:
-                    variationValue === null
-                      ? CHART_COLORS.text
-                      : variationValue < 0
-                      ? CHART_COLORS.critical
-                      : variationValue > 0
-                      ? CHART_COLORS.ok
-                      : CHART_COLORS.text,
-                }}
-              >
-                {variationValue !== null
-                  ? `${formatDelta(variationValue)} ${processValueAxisLabel}`
-                  : "N/D"}
-              </div>
-            </div>
+            {latestPoint?.fullDateLabel || "N/D"}
           </div>
         </div>
 
         <div
           style={{
-            border: "1px solid #edf2f8",
             borderRadius: 22,
-            padding: 18,
-            background: "#fbfdff",
+            border: "1px solid #e7eef7",
+            background: "#ffffff",
             boxShadow: CHART_COLORS.cardShadowSoft,
+            padding: "18px 20px",
+            minHeight: 120,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
           }}
         >
           <div
@@ -1288,92 +1101,66 @@ function ExecutiveIndicatorCard({
               letterSpacing: "0.08em",
               textTransform: "uppercase",
               color: CHART_COLORS.textSoft,
-              marginBottom: 14,
             }}
           >
-            BLOQUE DERECHA · KPIS
+            Valor real
           </div>
 
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 12,
+              fontSize: 32,
+              fontWeight: 900,
+              lineHeight: 1.1,
+              color: CHART_COLORS.text,
             }}
           >
-            <MetricMiniCard
-              title="% cumplimiento"
-              value={
-                complianceValue !== null ? formatPercent(complianceValue) : "N/D"
-              }
-              tone="primary"
-            />
-
-            <MetricMiniCard
-              title="Estado"
-              value={safeDisplay(getStatusLabel(latestStatus))}
-              tone={latestStatus}
-            />
-
-            <MetricMiniCard
-              title="Warning rule"
-              value={safeDisplay(
-                formatRule(
-                  selectedDashboardIndicator.warning_operator,
-                  selectedDashboardIndicator.warning_value,
-                  selectedDashboardIndicator.unit || processValueAxisLabel
-                )
-              )}
-              tone="neutral"
-            />
-
-            <MetricMiniCard
-              title="Critical rule"
-              value={safeDisplay(
-                formatRule(
-                  selectedDashboardIndicator.critical_operator,
-                  selectedDashboardIndicator.critical_value,
-                  selectedDashboardIndicator.unit || processValueAxisLabel
-                )
-              )}
-              tone="neutral"
-            />
+            {latestMeasuredValue !== null
+              ? `${formatPlainNumber(latestMeasuredValue)} ${processValueAxisLabel}`
+              : "N/D"}
           </div>
         </div>
-      </div>
 
-      <div style={{ padding: "0 22px 22px" }}>
-        <div
-          style={{
-            borderRadius: 22,
-            padding: "16px 18px",
-            ...observationTone,
-            boxShadow: "0 10px 26px rgba(17,42,74,0.05)",
-          }}
-        >
+        {hasObservation ? (
           <div
             style={{
-              fontSize: 12,
-              fontWeight: 800,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              marginBottom: 8,
-              opacity: 0.9,
+              borderRadius: 22,
+              border: "1px solid rgba(109,76,255,0.16)",
+              background: "rgba(109,76,255,0.05)",
+              boxShadow: CHART_COLORS.cardShadowSoft,
+              padding: "18px 20px",
+              minHeight: 120,
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
             }}
           >
-            BLOQUE ABAJO · OBSERVACIÓN
-          </div>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: CHART_COLORS.observation,
+                marginBottom: 10,
+              }}
+            >
+              Observación
+            </div>
 
-          <div
-            style={{
-              fontSize: 15,
-              lineHeight: 1.55,
-              fontWeight: 600,
-            }}
-          >
-            {latestObservation || "N/D"}
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                lineHeight: 1.5,
+                color: CHART_COLORS.text,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}
+            >
+              {latestObservation}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </section>
   );
