@@ -263,11 +263,7 @@ function resolveChartDomainMax(processDailySeries, selectedDashboardIndicator) {
 }
 
 function buildIndicatorBackgroundBands(indicator, yDomainMax) {
-  if (
-    !indicator ||
-    !Number.isFinite(Number(yDomainMax)) ||
-    Number(yDomainMax) <= 0
-  ) {
+  if (!indicator || !Number.isFinite(Number(yDomainMax)) || Number(yDomainMax) <= 0) {
     return [];
   }
 
@@ -373,10 +369,10 @@ function getMeasuredValueFromHistoryRow(row) {
   if (!row) return null;
 
   if (row.capture_mode === "single") {
-    const singleValue = Number(
+    const value = Number(
       row.single_value ?? row.value ?? row.measured_value ?? null
     );
-    return Number.isFinite(singleValue) ? singleValue : null;
+    return Number.isFinite(value) ? value : null;
   }
 
   const values = [];
@@ -754,48 +750,41 @@ function TrendLegend({
   );
 }
 
-function CustomDailyTooltip({
-  active,
-  label,
-  valueAxisLabel,
-  processDailySeries,
-}) {
-  if (!active) return null;
-
-  const activeIsoDate = getSafeIsoDate(label);
-
-  const barRow =
-    (Array.isArray(processDailySeries)
-      ? processDailySeries.find(
-          (item) => getSafeIsoDate(item.rawDate) === activeIsoDate
-        )
-      : null) || {};
+function ManualDailyCard({ point, valueAxisLabel }) {
+  if (!point) return null;
 
   const realIsoDate =
-    getSafeIsoDate(barRow.rawDate) ||
-    getSafeIsoDate(barRow.date) ||
-    getSafeIsoDate(barRow.record_date) ||
-    activeIsoDate;
+    getSafeIsoDate(point.rawDate) ||
+    getSafeIsoDate(point.date) ||
+    getSafeIsoDate(point.record_date);
 
   const formattedDate = formatFullDateEs(realIsoDate);
 
   return (
     <div
       style={{
+        position: "absolute",
+        top: 28,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 20,
         background: "#ffffff",
         border: "1px solid #d7e3f1",
-        borderRadius: 16,
-        padding: "14px 16px",
-        boxShadow: "0 16px 34px rgba(23,50,77,0.14)",
-        minWidth: 280,
+        borderRadius: 20,
+        padding: "18px 20px",
+        boxShadow: "0 18px 38px rgba(23,50,77,0.18)",
+        minWidth: 320,
+        maxWidth: 420,
+        pointerEvents: "none",
       }}
     >
       <div
         style={{
-          fontWeight: 800,
+          fontWeight: 900,
           color: CHART_COLORS.text,
-          marginBottom: 10,
-          fontSize: 16,
+          marginBottom: 12,
+          fontSize: 18,
+          lineHeight: 1.2,
         }}
       >
         {formattedDate}
@@ -804,8 +793,8 @@ function CustomDailyTooltip({
       <div
         style={{
           display: "grid",
-          gap: 8,
-          fontSize: 13,
+          gap: 10,
+          fontSize: 14,
           color: CHART_COLORS.text,
         }}
       >
@@ -815,13 +804,13 @@ function CustomDailyTooltip({
 
         <div>
           <strong>Valor:</strong>{" "}
-          {barRow.originalValue !== null && barRow.originalValue !== undefined
-            ? `${formatPlainNumber(Number(barRow.originalValue))} ${valueAxisLabel}`
+          {point.originalValue !== null && point.originalValue !== undefined
+            ? `${formatPlainNumber(Number(point.originalValue))} ${valueAxisLabel}`
             : "N/D"}
         </div>
 
         <div>
-          <strong>Observación:</strong> {safeDisplay(barRow.observation)}
+          <strong>Observación:</strong> {safeDisplay(point.observation)}
         </div>
       </div>
     </div>
@@ -1372,6 +1361,8 @@ function renderTrendChart({
   processValueAxisLabel,
   selectedDashboardIndicator,
   expanded = false,
+  hoveredDailyPoint,
+  setHoveredDailyPoint,
 }) {
   if (isStandardIndicatorSelected) {
     const yDomainMax = resolveChartDomainMax(
@@ -1388,156 +1379,162 @@ function renderTrendChart({
       getIndicatorTargetLineValue(selectedDashboardIndicator);
 
     return (
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart
-          data={processDailySeries}
-          margin={
-            expanded
-              ? { top: 38, right: 26, left: 12, bottom: 78 }
-              : { top: 28, right: 20, left: 8, bottom: 60 }
-          }
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
+      <div style={{ width: "100%", height: "100%", position: "relative" }}>
+        <ManualDailyCard
+          point={hoveredDailyPoint}
+          valueAxisLabel={processValueAxisLabel}
+        />
 
-          <XAxis
-            dataKey="rawDate"
-            type="category"
-            allowDuplicatedCategory={false}
-            interval={0}
-            angle={0}
-            textAnchor="middle"
-            minTickGap={0}
-            height={expanded ? 46 : 40}
-            tickFormatter={(value) => formatDayMonth(value)}
-            tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
-            label={
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart
+            data={processDailySeries}
+            margin={
               expanded
-                ? {
-                    value: "Fecha",
-                    position: "insideBottom",
-                    offset: -4,
-                    fill: CHART_COLORS.text,
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }
-                : undefined
+                ? { top: 38, right: 26, left: 12, bottom: 78 }
+                : { top: 28, right: 20, left: 8, bottom: 60 }
             }
-          />
-
-          <YAxis
-            yAxisId="left"
-            domain={[0, yDomainMax]}
-            tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
-            tickFormatter={(value) => formatChartNumber(value)}
-            label={
-              expanded
-                ? {
-                    value: processValueAxisLabel,
-                    angle: -90,
-                    position: "insideLeft",
-                    fill: CHART_COLORS.text,
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }
-                : undefined
-            }
-          />
-
-          <YAxis
-            yAxisId="right"
-            orientation="right"
-            domain={[0, 100]}
-            tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
-            tickFormatter={(value) => `${Number(value)}%`}
-            label={
-              expanded
-                ? {
-                    value: "% Cumplimiento",
-                    angle: 90,
-                    position: "insideRight",
-                    fill: CHART_COLORS.text,
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }
-                : undefined
-            }
-          />
-
-          {backgroundBands.map((band) => (
-            <ReferenceArea
-              key={band.key}
-              yAxisId="left"
-              y1={band.y1}
-              y2={band.y2}
-              fill={band.color}
-              ifOverflow="extendDomain"
-            />
-          ))}
-
-          {targetLineValue !== null ? (
-            <ReferenceLine
-              yAxisId="left"
-              y={targetLineValue}
-              stroke={CHART_COLORS.target}
-              strokeWidth={2}
-              strokeDasharray="8 6"
-              ifOverflow="extendDomain"
-              label={{
-                value: `Meta: ${formatPlainNumber(targetLineValue)} ${processValueAxisLabel}`,
-                position: "insideTopRight",
-                fill: CHART_COLORS.target,
-                fontSize: expanded ? 12 : 11,
-                fontWeight: 800,
-              }}
-            />
-          ) : null}
-
-          <Tooltip
-            cursor={{ fill: "rgba(36,89,195,0.08)" }}
-            content={
-              <CustomDailyTooltip
-                valueAxisLabel={processValueAxisLabel}
-                processDailySeries={processDailySeries}
-              />
-            }
-          />
-
-          <Bar
-            yAxisId="left"
-            dataKey="value"
-            name={processValueAxisLabel}
-            radius={[10, 10, 0, 0]}
-            maxBarSize={expanded ? 46 : 34}
+            onMouseMove={(state) => {
+              const nextPoint =
+                state?.activePayload?.find((item) => item?.dataKey === "value")?.payload ||
+                null;
+              setHoveredDailyPoint(nextPoint);
+            }}
+            onMouseLeave={() => {
+              setHoveredDailyPoint(null);
+            }}
           >
-            {processDailySeries.map((entry, index) => (
-              <Cell
-                key={`cell-${entry.id || entry.rawDate || index}`}
-                fill={entry.fill || CHART_COLORS.ok}
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
+
+            <XAxis
+              dataKey="rawDate"
+              type="category"
+              allowDuplicatedCategory={false}
+              interval={0}
+              angle={0}
+              textAnchor="middle"
+              minTickGap={0}
+              height={expanded ? 46 : 40}
+              tickFormatter={(value) => formatDayMonth(value)}
+              tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
+              label={
+                expanded
+                  ? {
+                      value: "Fecha",
+                      position: "insideBottom",
+                      offset: -4,
+                      fill: CHART_COLORS.text,
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }
+                  : undefined
+              }
+            />
+
+            <YAxis
+              yAxisId="left"
+              domain={[0, yDomainMax]}
+              tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
+              tickFormatter={(value) => formatChartNumber(value)}
+              label={
+                expanded
+                  ? {
+                      value: processValueAxisLabel,
+                      angle: -90,
+                      position: "insideLeft",
+                      fill: CHART_COLORS.text,
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }
+                  : undefined
+              }
+            />
+
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              domain={[0, 100]}
+              tick={{ fontSize: expanded ? 12 : 11, fill: CHART_COLORS.text }}
+              tickFormatter={(value) => `${Number(value)}%`}
+              label={
+                expanded
+                  ? {
+                      value: "% Cumplimiento",
+                      angle: 90,
+                      position: "insideRight",
+                      fill: CHART_COLORS.text,
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }
+                  : undefined
+              }
+            />
+
+            {backgroundBands.map((band) => (
+              <ReferenceArea
+                key={band.key}
+                yAxisId="left"
+                y1={band.y1}
+                y2={band.y2}
+                fill={band.color}
+                ifOverflow="extendDomain"
               />
             ))}
-            <LabelList content={<DailyValueTopLabel />} />
-            <LabelList content={<ObservationMarkerLabel />} />
-          </Bar>
 
-          <Line
-            yAxisId="right"
-            type="monotone"
-            dataKey="general"
-            name="% cumplimiento"
-            stroke={CHART_COLORS.navy}
-            strokeWidth={3}
-            dot={{ r: expanded ? 4 : 3, fill: CHART_COLORS.navy }}
-            activeDot={{ r: expanded ? 6 : 5 }}
-          />
+            {targetLineValue !== null ? (
+              <ReferenceLine
+                yAxisId="left"
+                y={targetLineValue}
+                stroke={CHART_COLORS.target}
+                strokeWidth={2}
+                strokeDasharray="8 6"
+                ifOverflow="extendDomain"
+                label={{
+                  value: `Meta: ${formatPlainNumber(targetLineValue)} ${processValueAxisLabel}`,
+                  position: "insideTopRight",
+                  fill: CHART_COLORS.target,
+                  fontSize: expanded ? 12 : 11,
+                  fontWeight: 800,
+                }}
+              />
+            ) : null}
 
-          <Scatter
-            yAxisId="left"
-            data={processDailySeries.filter((item) => item.hasObservation)}
-            dataKey="observationMarkerY"
-            shape={<ObservationScatterShape />}
-          />
-        </ComposedChart>
-      </ResponsiveContainer>
+            <Bar
+              yAxisId="left"
+              dataKey="value"
+              name={processValueAxisLabel}
+              radius={[10, 10, 0, 0]}
+              maxBarSize={expanded ? 46 : 34}
+            >
+              {processDailySeries.map((entry, index) => (
+                <Cell
+                  key={`cell-${entry.id || entry.rawDate || index}`}
+                  fill={entry.fill || CHART_COLORS.ok}
+                />
+              ))}
+              <LabelList content={<DailyValueTopLabel />} />
+              <LabelList content={<ObservationMarkerLabel />} />
+            </Bar>
+
+            <Line
+              yAxisId="right"
+              type="monotone"
+              dataKey="general"
+              name="% cumplimiento"
+              stroke={CHART_COLORS.navy}
+              strokeWidth={3}
+              dot={{ r: expanded ? 4 : 3, fill: CHART_COLORS.navy }}
+              activeDot={{ r: expanded ? 6 : 5 }}
+            />
+
+            <Scatter
+              yAxisId="left"
+              data={processDailySeries.filter((item) => item.hasObservation)}
+              dataKey="observationMarkerY"
+              shape={<ObservationScatterShape />}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
     );
   }
 
@@ -1599,6 +1596,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
   const [indicatorHistoryRows, setIndicatorHistoryRows] = useState([]);
   const [historySummary, setHistorySummary] = useState(null);
   const [isTrendExpanded, setIsTrendExpanded] = useState(false);
+  const [hoveredDailyPoint, setHoveredDailyPoint] = useState(null);
 
   const [dashboardFilter, setDashboardFilter] = useState({
     process_id: "",
@@ -1644,6 +1642,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       setIsTrendExpanded(false);
       setIndicatorHistoryRows([]);
       setHistorySummary(null);
+      setHoveredDailyPoint(null);
 
       const filters = {
         ...dashboardFilter,
@@ -1737,7 +1736,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
           is_entity_dashboard: false,
         });
 
-        setIndicatorHistoryRows(readHistoryRows(historyData));
+        const rows = readHistoryRows(historyData);
+        setIndicatorHistoryRows(rows);
         setHistorySummary(historySummaryData || readHistorySummary(historyData));
         setDashboardOverview(null);
       } else {
@@ -1899,7 +1899,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     }
 
     return sortByIsoDateAsc(
-      (dashboardData?.trend || []).map((item) => {
+      (dashboardData?.trend || []).map((item, index) => {
         const numericValue = Number(item.value || 0);
         const status = normalizeStatus(item.status || "ok");
         const realDate = getSafeIsoDate(
@@ -1907,6 +1907,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
         );
 
         return {
+          id: item.id || `${realDate}-${index}`,
           rawDate: realDate,
           date: realDate,
           record_date: realDate,
@@ -2849,6 +2850,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       processValueAxisLabel,
                       selectedDashboardIndicator,
                       expanded: false,
+                      hoveredDailyPoint,
+                      setHoveredDailyPoint,
                     })}
                   </div>
 
@@ -3331,6 +3334,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   processValueAxisLabel,
                   selectedDashboardIndicator,
                   expanded: true,
+                  hoveredDailyPoint,
+                  setHoveredDailyPoint,
                 })}
               </div>
             </div>
