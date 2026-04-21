@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -52,6 +52,7 @@ const CHART_COLORS = {
   cardBorder: "#e7eef7",
   cardShadow: "0 16px 40px rgba(17, 42, 74, 0.08)",
   cardShadowSoft: "0 12px 30px rgba(17, 42, 74, 0.06)",
+  selectedStroke: "#0f2744",
 };
 
 const MONTHS_ES = [
@@ -365,23 +366,14 @@ function buildIndicatorBackgroundBands(indicator, yDomainMax) {
   return segments.filter(Boolean).sort((a, b) => a.priority - b.priority);
 }
 
-/**
- * CORRECCIÓN CLAVE:
- * Para indicadores normales, el valor real debe salir igual que en HISTORY:
- * - si capture_mode === "single" => single_value
- * - si no => promedio de shifts válidos
- *
- * SOLO como respaldo muy final usamos row.value.
- */
 function getMeasuredValueFromHistoryRow(row) {
   if (!row) return null;
 
-  const captureMode = String(row.capture_mode || "").trim().toLowerCase();
+  const directValue = Number(row.value);
+  if (Number.isFinite(directValue)) return directValue;
 
-  if (captureMode === "single") {
-    const singleValue = Number(row.single_value);
-    return Number.isFinite(singleValue) ? singleValue : null;
-  }
+  const singleValue = Number(row.single_value);
+  if (Number.isFinite(singleValue)) return singleValue;
 
   const values = [];
 
@@ -400,12 +392,8 @@ function getMeasuredValueFromHistoryRow(row) {
     if (Number.isFinite(c)) values.push(c);
   }
 
-  if (values.length) {
-    return values.reduce((acc, val) => acc + val, 0) / values.length;
-  }
-
-  const fallbackValue = Number(row.value);
-  return Number.isFinite(fallbackValue) ? fallbackValue : null;
+  if (!values.length) return null;
+  return values.reduce((acc, val) => acc + val, 0) / values.length;
 }
 
 function getDaysInMonth(year, month) {
@@ -592,7 +580,6 @@ function buildDailySeriesFromHistory(historyRows, filter) {
         shift_a: item.shift_a,
         shift_b: item.shift_b,
         shift_c: item.shift_c,
-        capture_mode: item.capture_mode,
 
         observation,
         hasObservation: !!observation,
@@ -773,88 +760,26 @@ function TrendLegend({
   );
 }
 
-function CustomDailyTooltip({ active, payload, valueAxisLabel }) {
-  if (!active || !payload?.length) return null;
-
-  const barRow =
-    payload.find((item) => item?.dataKey === "value")?.payload ||
-    payload.find((item) => item?.payload?.originalValue !== undefined)?.payload ||
-    payload[0]?.payload ||
-    {};
-
-  const realIsoDate =
-    getSafeIsoDate(barRow.rawDate) ||
-    getSafeIsoDate(barRow.date) ||
-    getSafeIsoDate(barRow.record_date);
-
-  const formattedDate = formatFullDateEs(realIsoDate);
-
-  return (
-    <div
-      style={{
-        background: "#ffffff",
-        border: "1px solid #d7e3f1",
-        borderRadius: 16,
-        padding: "14px 16px",
-        boxShadow: "0 16px 34px rgba(23,50,77,0.14)",
-        minWidth: 280,
-      }}
-    >
-      <div
-        style={{
-          fontWeight: 800,
-          color: CHART_COLORS.text,
-          marginBottom: 10,
-          fontSize: 16,
-        }}
-      >
-        {formattedDate}
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gap: 8,
-          fontSize: 13,
-          color: CHART_COLORS.text,
-        }}
-      >
-        <div>
-          <strong>Fecha:</strong> {formattedDate}
-        </div>
-
-        <div>
-          <strong>Valor:</strong>{" "}
-          {barRow.originalValue !== null && barRow.originalValue !== undefined
-            ? `${formatPlainNumber(Number(barRow.originalValue))} ${valueAxisLabel}`
-            : "N/D"}
-        </div>
-
-        <div>
-          <strong>Observación:</strong> {safeDisplay(barRow.observation)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ExecutiveIndicatorCard({
   selectedDashboardIndicator,
+  selectedPoint,
   processDailySeries,
   processValueAxisLabel,
 }) {
   if (!selectedDashboardIndicator) return null;
 
   const sortedSeries = sortByIsoDateAsc(processDailySeries);
-  const latestPoint =
-    sortedSeries.length > 0 ? sortedSeries[sortedSeries.length - 1] : null;
+  if (!sortedSeries.length) return null;
 
-  const previousPoint =
-    sortedSeries.length > 1 ? sortedSeries[sortedSeries.length - 2] : null;
+  const activePoint = selectedPoint || sortedSeries[sortedSeries.length - 1];
+  const activeIndex = sortedSeries.findIndex(
+    (item) => item.rawDate === activePoint.rawDate
+  );
+  const previousPoint = activeIndex > 0 ? sortedSeries[activeIndex - 1] : null;
 
-  const latestMeasuredValue =
-    latestPoint?.originalValue !== null && latestPoint?.originalValue !== undefined
-      ? Number(latestPoint.originalValue)
+  const currentMeasuredValue =
+    activePoint?.originalValue !== null && activePoint?.originalValue !== undefined
+      ? Number(activePoint.originalValue)
       : null;
 
   const previousMeasuredValue =
@@ -863,31 +788,31 @@ function ExecutiveIndicatorCard({
       : null;
 
   const complianceValue =
-    latestPoint && Number.isFinite(Number(latestPoint.general))
-      ? Number(latestPoint.general)
+    activePoint && Number.isFinite(Number(activePoint.general))
+      ? Number(activePoint.general)
       : null;
 
   const targetValue = getSafeNumericValue(selectedDashboardIndicator.target_value);
-  const latestStatus = latestPoint
-    ? normalizeStatus(latestPoint.status)
+  const currentStatus = activePoint
+    ? normalizeStatus(activePoint.status)
     : normalizeStatus(selectedDashboardIndicator.status);
 
   const variationValue =
-    latestMeasuredValue !== null && previousMeasuredValue !== null
-      ? Number(latestMeasuredValue) - Number(previousMeasuredValue)
+    currentMeasuredValue !== null && previousMeasuredValue !== null
+      ? Number(currentMeasuredValue) - Number(previousMeasuredValue)
       : null;
 
-  const latestObservation = String(latestPoint?.observation || "").trim();
-  const statusStyles = getStatusPillStyles(latestStatus);
+  const currentObservation = String(activePoint?.observation || "").trim();
+  const statusStyles = getStatusPillStyles(currentStatus);
 
   const observationTone =
-    latestStatus === "critical"
+    currentStatus === "critical"
       ? {
           background: "#fff6f6",
           border: "1px solid rgba(226,75,75,0.22)",
           color: CHART_COLORS.critical,
         }
-      : latestStatus === "warning"
+      : currentStatus === "warning"
       ? {
           background: "#fffaf0",
           border: "1px solid rgba(244,196,48,0.28)",
@@ -999,7 +924,7 @@ function ExecutiveIndicatorCard({
               alignSelf: "flex-start",
             }}
           >
-            {safeDisplay(getStatusLabel(latestStatus))}
+            {safeDisplay(getStatusLabel(currentStatus))}
           </span>
         </div>
       </div>
@@ -1049,7 +974,7 @@ function ExecutiveIndicatorCard({
                   marginBottom: 6,
                 }}
               >
-                Fecha último registro
+                Fecha seleccionada
               </div>
               <div
                 style={{
@@ -1058,7 +983,7 @@ function ExecutiveIndicatorCard({
                   color: CHART_COLORS.text,
                 }}
               >
-                {safeDisplay(latestPoint?.rawDate, formatDayMonth)}
+                {safeDisplay(activePoint?.rawDate, formatDayMonth)}
               </div>
             </div>
 
@@ -1102,8 +1027,8 @@ function ExecutiveIndicatorCard({
                   color: CHART_COLORS.text,
                 }}
               >
-                {latestMeasuredValue !== null
-                  ? `${formatPlainNumber(latestMeasuredValue)} ${processValueAxisLabel}`
+                {currentMeasuredValue !== null
+                  ? `${formatPlainNumber(currentMeasuredValue)} ${processValueAxisLabel}`
                   : "N/D"}
               </div>
             </div>
@@ -1235,14 +1160,14 @@ function ExecutiveIndicatorCard({
                   fontSize: 24,
                   lineHeight: 1.1,
                   color:
-                    latestStatus === "critical"
+                    currentStatus === "critical"
                       ? CHART_COLORS.critical
-                      : latestStatus === "warning"
+                      : currentStatus === "warning"
                       ? "#a16d00"
                       : CHART_COLORS.ok,
                 }}
               >
-                {safeDisplay(getStatusLabel(latestStatus))}
+                {safeDisplay(getStatusLabel(currentStatus))}
               </strong>
             </div>
 
@@ -1366,7 +1291,7 @@ function ExecutiveIndicatorCard({
               fontWeight: 600,
             }}
           >
-            {latestObservation || "N/D"}
+            {currentObservation || "N/D"}
           </div>
         </div>
       </div>
@@ -1381,6 +1306,8 @@ function renderTrendChart({
   processValueAxisLabel,
   selectedDashboardIndicator,
   expanded = false,
+  selectedTrendDate = "",
+  onSelectTrendPoint = () => {},
 }) {
   if (isStandardIndicatorSelected) {
     const yDomainMax = resolveChartDomainMax(
@@ -1393,8 +1320,7 @@ function renderTrendChart({
       yDomainMax
     );
 
-    const targetLineValue =
-      getIndicatorTargetLineValue(selectedDashboardIndicator);
+    const targetLineValue = getIndicatorTargetLineValue(selectedDashboardIndicator);
 
     return (
       <ResponsiveContainer width="100%" height="100%">
@@ -1503,7 +1429,10 @@ function renderTrendChart({
 
           <Tooltip
             cursor={{ fill: "rgba(36,89,195,0.08)" }}
-            content={<CustomDailyTooltip valueAxisLabel={processValueAxisLabel} />}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              return null;
+            }}
           />
 
           <Bar
@@ -1512,13 +1441,22 @@ function renderTrendChart({
             name={processValueAxisLabel}
             radius={[10, 10, 0, 0]}
             maxBarSize={expanded ? 46 : 34}
+            onClick={(data) => {
+              if (data?.rawDate) onSelectTrendPoint(data.rawDate);
+            }}
           >
-            {processDailySeries.map((entry, index) => (
-              <Cell
-                key={`cell-${entry.rawDate || index}`}
-                fill={entry.fill || CHART_COLORS.ok}
-              />
-            ))}
+            {processDailySeries.map((entry, index) => {
+              const isSelected = entry.rawDate === selectedTrendDate;
+              return (
+                <Cell
+                  key={`cell-${entry.rawDate || index}`}
+                  fill={entry.fill || CHART_COLORS.ok}
+                  stroke={isSelected ? CHART_COLORS.selectedStroke : "transparent"}
+                  strokeWidth={isSelected ? 3 : 0}
+                  cursor="pointer"
+                />
+              );
+            })}
             <LabelList content={<DailyValueTopLabel />} />
             <LabelList content={<ObservationMarkerLabel />} />
           </Bar>
@@ -1530,7 +1468,25 @@ function renderTrendChart({
             name="% cumplimiento"
             stroke={CHART_COLORS.navy}
             strokeWidth={3}
-            dot={{ r: expanded ? 4 : 3, fill: CHART_COLORS.navy }}
+            dot={(props) => {
+              const { cx, cy, payload } = props;
+              const isSelected = payload?.rawDate === selectedTrendDate;
+
+              return (
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={isSelected ? 6 : expanded ? 4 : 3}
+                  fill={CHART_COLORS.navy}
+                  stroke={isSelected ? CHART_COLORS.selectedStroke : CHART_COLORS.navy}
+                  strokeWidth={isSelected ? 3 : 1}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => {
+                    if (payload?.rawDate) onSelectTrendPoint(payload.rawDate);
+                  }}
+                />
+              );
+            }}
             activeDot={{ r: expanded ? 6 : 5 }}
           />
 
@@ -1603,6 +1559,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
   const [indicatorHistoryRows, setIndicatorHistoryRows] = useState([]);
   const [historySummary, setHistorySummary] = useState(null);
   const [isTrendExpanded, setIsTrendExpanded] = useState(false);
+  const [selectedTrendDate, setSelectedTrendDate] = useState("");
 
   const [dashboardFilter, setDashboardFilter] = useState({
     process_id: "",
@@ -1648,6 +1605,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       setIsTrendExpanded(false);
       setIndicatorHistoryRows([]);
       setHistorySummary(null);
+      setSelectedTrendDate("");
 
       const filters = {
         ...dashboardFilter,
@@ -1941,6 +1899,31 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
       isMatchingStatusFilter(item.status, dashboardFilter.status_filter)
     );
   }, [processDailySeriesRaw, dashboardFilter.status_filter]);
+
+  useEffect(() => {
+    if (!processDailySeries.length) {
+      setSelectedTrendDate("");
+      return;
+    }
+
+    const exists = processDailySeries.some(
+      (item) => item.rawDate === selectedTrendDate
+    );
+
+    if (!exists) {
+      setSelectedTrendDate(processDailySeries[processDailySeries.length - 1].rawDate);
+    }
+  }, [processDailySeries, selectedTrendDate]);
+
+  const selectedTrendPoint = useMemo(() => {
+    if (!processDailySeries.length) return null;
+
+    const match = processDailySeries.find(
+      (item) => item.rawDate === selectedTrendDate
+    );
+
+    return match || processDailySeries[processDailySeries.length - 1];
+  }, [processDailySeries, selectedTrendDate]);
 
   const processValueAxisLabel = useMemo(() => {
     if (!selectedDashboardIndicator) return "Valor";
@@ -2801,6 +2784,7 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
               {isStandardIndicatorSelected && (
                 <ExecutiveIndicatorCard
                   selectedDashboardIndicator={selectedDashboardIndicator}
+                  selectedPoint={selectedTrendPoint}
                   processDailySeries={processDailySeries}
                   processValueAxisLabel={processValueAxisLabel}
                 />
@@ -2853,6 +2837,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                       processValueAxisLabel,
                       selectedDashboardIndicator,
                       expanded: false,
+                      selectedTrendDate,
+                      onSelectTrendPoint: setSelectedTrendDate,
                     })}
                   </div>
 
@@ -3335,6 +3321,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   processValueAxisLabel,
                   selectedDashboardIndicator,
                   expanded: true,
+                  selectedTrendDate,
+                  onSelectTrendPoint: setSelectedTrendDate,
                 })}
               </div>
             </div>
