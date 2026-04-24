@@ -112,7 +112,7 @@ export default function DailyView({ accessLevel, processes, indicators }) {
             indicator_id: indicatorId,
             record_date: dailyForm.record_date,
           }),
-          API.getIndicatorEntityTargets({
+          API.getEntityTargets({
             indicator_id: indicatorId,
             active_only: true,
           }),
@@ -346,7 +346,7 @@ export default function DailyView({ accessLevel, processes, indicators }) {
             indicator_id: indicatorId,
             record_date: dailyForm.record_date,
           }),
-          API.getIndicatorEntityTargets({
+          API.getEntityTargets({
             indicator_id: indicatorId,
             active_only: true,
           }),
