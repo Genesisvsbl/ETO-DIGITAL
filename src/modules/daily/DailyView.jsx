@@ -16,13 +16,13 @@ function formatDateInput(value) {
   return new Date(value).toISOString().slice(0, 10);
 }
 
-function buildStablePersonRowId(row, index) {
+function buildStableEntityRowId(row, index) {
   if (row.__rowId) return row.__rowId;
-  if (row.person_id) return `person-${row.person_id}`;
+  if (row.entity_id) return `entity-${row.entity_id}`;
   return `row-${index}`;
 }
 
-function buildPersonCompliance(value, target) {
+function buildEntityCompliance(value, target) {
   const numericTarget = Number(target || 0);
   const numericValue =
     value === "" || value === null || value === undefined ? 0 : Number(value);
@@ -51,7 +51,7 @@ export default function DailyView({ accessLevel, processes, indicators }) {
   const [editingDailyId, setEditingDailyId] = useState(null);
 
   const [dailyResults, setDailyResults] = useState([]);
-  const [dailyPersonRows, setDailyPersonRows] = useState([]);
+  const [dailyEntityRows, setDailyEntityRows] = useState([]);
 
   const [dailyForm, setDailyForm] = useState({
     record_date: new Date().toISOString().slice(0, 10),
@@ -89,14 +89,18 @@ export default function DailyView({ accessLevel, processes, indicators }) {
     return normalizeShifts(selectedIndicator?.shifts);
   }, [selectedIndicator]);
 
-  const isPersonDailyIndicator = useMemo(() => {
-    return selectedIndicator?.scope_type === "person";
+  const isEntityDailyIndicator = useMemo(() => {
+    return selectedIndicator?.scope_type === "entity";
   }, [selectedIndicator]);
 
   useEffect(() => {
-    async function loadDailyPersonRows() {
-      if (!isPersonDailyIndicator || !dailyForm.indicator_id || !dailyForm.record_date) {
-        setDailyPersonRows([]);
+    async function loadDailyEntityRows() {
+      if (
+        !isEntityDailyIndicator ||
+        !dailyForm.indicator_id ||
+        !dailyForm.record_date
+      ) {
+        setDailyEntityRows([]);
         return;
       }
 
@@ -104,11 +108,11 @@ export default function DailyView({ accessLevel, processes, indicators }) {
         const indicatorId = Number(dailyForm.indicator_id);
 
         const [grid, targets] = await Promise.all([
-          API.getPersonCaptureGrid({
+          API.getEntityCaptureGrid({
             indicator_id: indicatorId,
             record_date: dailyForm.record_date,
           }),
-          API.getPersonTargets({
+          API.getIndicatorEntityTargets({
             indicator_id: indicatorId,
             active_only: true,
           }),
@@ -116,15 +120,16 @@ export default function DailyView({ accessLevel, processes, indicators }) {
 
         const targetMap = new Map(
           (targets || []).map((item) => [
-            Number(item.person_id),
+            Number(item.entity_id),
             Number(item.target_value || 0),
           ])
         );
 
         const rows = (grid.rows || []).map((row) => {
-          const personId = Number(row.person_id);
+          const entityId = Number(row.entity_id);
+
           const targetValue = Number(
-            targetMap.get(personId) ??
+            targetMap.get(entityId) ??
               (row.target_value !== null && row.target_value !== undefined
                 ? row.target_value
                 : selectedIndicator?.target_value || 0)
@@ -135,13 +140,17 @@ export default function DailyView({ accessLevel, processes, indicators }) {
               ? Number(row.day_value)
               : 0;
 
-          const { compliance, status } = buildPersonCompliance(dayValue, targetValue);
+          const { compliance, status } = buildEntityCompliance(
+            dayValue,
+            targetValue
+          );
 
           return {
-            __rowId: `person-${personId}`,
-            person_id: personId,
-            person_code: row.person_code || "",
-            person_name: row.person_name || "",
+            __rowId: `entity-${entityId}`,
+            entity_id: entityId,
+            entity_code: row.entity_code || "",
+            entity_name: row.entity_name || "",
+            entity_type: row.entity_type || "",
             target_value: targetValue,
             value:
               row.day_value !== null && row.day_value !== undefined
@@ -158,29 +167,29 @@ export default function DailyView({ accessLevel, processes, indicators }) {
           };
         });
 
-        setDailyPersonRows(rows);
+        setDailyEntityRows(rows);
       } catch (err) {
         setMessage(err.message);
       }
     }
 
-    loadDailyPersonRows();
+    loadDailyEntityRows();
   }, [
-    isPersonDailyIndicator,
+    isEntityDailyIndicator,
     dailyForm.indicator_id,
     dailyForm.record_date,
     selectedIndicator,
   ]);
 
-  const personDailySummary = useMemo(() => {
-    if (!isPersonDailyIndicator) return null;
+  const entityDailySummary = useMemo(() => {
+    if (!isEntityDailyIndicator) return null;
 
-    const rows = dailyPersonRows || [];
-    const totalPersons = rows.length;
+    const rows = dailyEntityRows || [];
+    const totalEntities = rows.length;
 
-    if (!totalPersons) {
+    if (!totalEntities) {
       return {
-        totalPersons: 0,
+        totalEntities: 0,
         averageCompliance: 0,
         okCount: 0,
         warningCount: 0,
@@ -200,7 +209,7 @@ export default function DailyView({ accessLevel, processes, indicators }) {
           ? 0
           : Number(row.value);
 
-      const { compliance, status } = buildPersonCompliance(value, target);
+      const { compliance, status } = buildEntityCompliance(value, target);
 
       totalCompliance += compliance;
 
@@ -210,16 +219,16 @@ export default function DailyView({ accessLevel, processes, indicators }) {
     });
 
     return {
-      totalPersons,
-      averageCompliance: totalCompliance / totalPersons,
+      totalEntities,
+      averageCompliance: totalCompliance / totalEntities,
       okCount,
       warningCount,
       criticalCount,
     };
-  }, [dailyPersonRows, isPersonDailyIndicator]);
+  }, [dailyEntityRows, isEntityDailyIndicator]);
 
-  function updateDailyPersonRow(index, field, value) {
-    setDailyPersonRows((prev) =>
+  function updateDailyEntityRow(index, field, value) {
+    setDailyEntityRows((prev) =>
       prev.map((row, i) => {
         if (i !== index) return row;
 
@@ -231,12 +240,15 @@ export default function DailyView({ accessLevel, processes, indicators }) {
         const target = Number(
           nextRow.target_value || selectedIndicator?.target_value || 0
         );
+
         const dayValue =
-          nextRow.value === "" || nextRow.value === null || nextRow.value === undefined
+          nextRow.value === "" ||
+          nextRow.value === null ||
+          nextRow.value === undefined
             ? 0
             : Number(nextRow.value);
 
-        const { compliance, status } = buildPersonCompliance(dayValue, target);
+        const { compliance, status } = buildEntityCompliance(dayValue, target);
 
         return {
           ...nextRow,
@@ -250,7 +262,7 @@ export default function DailyView({ accessLevel, processes, indicators }) {
 
   function resetDailyForm() {
     setEditingDailyId(null);
-    setDailyPersonRows([]);
+    setDailyEntityRows([]);
     setDailyForm({
       record_date: new Date().toISOString().slice(0, 10),
       process_id: "",
@@ -269,9 +281,9 @@ export default function DailyView({ accessLevel, processes, indicators }) {
     try {
       setLoading(true);
 
-      if (selectedIndicator?.scope_type === "person") {
-        const validRows = (dailyPersonRows || []).map((row) => ({
-          person_id: Number(row.person_id),
+      if (selectedIndicator?.scope_type === "entity") {
+        const validRows = (dailyEntityRows || []).map((row) => ({
+          entity_id: Number(row.entity_id),
           value:
             row.value === "" || row.value === null || row.value === undefined
               ? 0
@@ -280,16 +292,16 @@ export default function DailyView({ accessLevel, processes, indicators }) {
         }));
 
         if (!validRows.length) {
-          throw new Error("Este indicador no tiene personas asociadas.");
+          throw new Error("Este indicador no tiene entidades asociadas.");
         }
 
-        await API.savePersonGrid({
+        await API.saveEntityGrid({
           indicator_id: Number(dailyForm.indicator_id),
           record_date: dailyForm.record_date,
           rows: validRows,
         });
 
-        clearMessageSoon("Captura por persona guardada correctamente");
+        clearMessageSoon("Captura por entidad guardada correctamente");
         await handleSearchDaily();
         return;
       }
@@ -326,15 +338,15 @@ export default function DailyView({ accessLevel, processes, indicators }) {
     try {
       setLoading(true);
 
-      if (selectedIndicator?.scope_type === "person" && dailyForm.indicator_id) {
+      if (selectedIndicator?.scope_type === "entity" && dailyForm.indicator_id) {
         const indicatorId = Number(dailyForm.indicator_id);
 
         const [grid, targets] = await Promise.all([
-          API.getPersonCaptureGrid({
+          API.getEntityCaptureGrid({
             indicator_id: indicatorId,
             record_date: dailyForm.record_date,
           }),
-          API.getPersonTargets({
+          API.getIndicatorEntityTargets({
             indicator_id: indicatorId,
             active_only: true,
           }),
@@ -342,16 +354,17 @@ export default function DailyView({ accessLevel, processes, indicators }) {
 
         const targetMap = new Map(
           (targets || []).map((item) => [
-            Number(item.person_id),
+            Number(item.entity_id),
             Number(item.target_value || 0),
           ])
         );
 
         setDailyResults(
           (grid.rows || []).map((item) => {
-            const personId = Number(item.person_id);
+            const entityId = Number(item.entity_id);
+
             const targetValue = Number(
-              targetMap.get(personId) ??
+              targetMap.get(entityId) ??
                 (item.target_value !== null && item.target_value !== undefined
                   ? item.target_value
                   : selectedIndicator?.target_value || 0)
@@ -362,24 +375,29 @@ export default function DailyView({ accessLevel, processes, indicators }) {
                 ? Number(item.day_value)
                 : 0;
 
-            const { compliance, status } = buildPersonCompliance(dayValue, targetValue);
+            const { compliance, status } = buildEntityCompliance(
+              dayValue,
+              targetValue
+            );
 
             return {
-              id: `${item.person_id}-${dailyForm.record_date}`,
+              id: `${item.entity_id}-${dailyForm.record_date}`,
               record_date: dailyForm.record_date,
               indicator_code: selectedIndicator.code,
               indicator_name: selectedIndicator.name,
               process_name: selectedIndicator.process_name,
-              person_name: item.person_name,
-              person_code: item.person_code,
+              entity_name: item.entity_name,
+              entity_code: item.entity_code,
+              entity_type: item.entity_type,
               value: item.day_value,
               general: compliance,
               unit: "%",
               status,
-              scope_type: "person",
+              scope_type: "entity",
             };
           })
         );
+
         return;
       }
 
@@ -477,7 +495,7 @@ export default function DailyView({ accessLevel, processes, indicators }) {
                       shift_c: "",
                       observation: "",
                     });
-                    setDailyPersonRows([]);
+                    setDailyEntityRows([]);
                   }}
                 >
                   <option value="">Seleccione</option>
@@ -506,7 +524,7 @@ export default function DailyView({ accessLevel, processes, indicators }) {
                     shift_c: "",
                     observation: "",
                   });
-                  setDailyPersonRows([]);
+                  setDailyEntityRows([]);
                 }}
                 required
               >
@@ -532,8 +550,8 @@ export default function DailyView({ accessLevel, processes, indicators }) {
                 <div className="rule-item">
                   <span>Captura</span>
                   <strong>
-                    {selectedIndicator.scope_type === "person"
-                      ? "Por persona"
+                    {selectedIndicator.scope_type === "entity"
+                      ? "Por entidad"
                       : formatCaptureModeLabel(selectedIndicator.capture_mode)}
                   </strong>
                 </div>
@@ -570,31 +588,31 @@ export default function DailyView({ accessLevel, processes, indicators }) {
               </div>
             )}
 
-            {isPersonDailyIndicator ? (
+            {isEntityDailyIndicator ? (
               <>
-                {personDailySummary && (
+                {entityDailySummary && (
                   <section className="stats-row summary-row">
                     <div className="kpi-card elevated">
-                      <span>Personas</span>
-                      <strong>{personDailySummary.totalPersons}</strong>
+                      <span>Entidades</span>
+                      <strong>{entityDailySummary.totalEntities}</strong>
                     </div>
                     <div className="kpi-card elevated">
                       <span>Promedio cumplimiento</span>
                       <strong>
-                        {formatPercent(personDailySummary.averageCompliance)}
+                        {formatPercent(entityDailySummary.averageCompliance)}
                       </strong>
                     </div>
                     <div className="kpi-card elevated">
                       <span>OK</span>
-                      <strong>{personDailySummary.okCount}</strong>
+                      <strong>{entityDailySummary.okCount}</strong>
                     </div>
                     <div className="kpi-card elevated">
                       <span>Warning</span>
-                      <strong>{personDailySummary.warningCount}</strong>
+                      <strong>{entityDailySummary.warningCount}</strong>
                     </div>
                     <div className="kpi-card elevated">
                       <span>Critical</span>
-                      <strong>{personDailySummary.criticalCount}</strong>
+                      <strong>{entityDailySummary.criticalCount}</strong>
                     </div>
                   </section>
                 )}
@@ -604,7 +622,8 @@ export default function DailyView({ accessLevel, processes, indicators }) {
                     <thead>
                       <tr>
                         <th>Código</th>
-                        <th>Persona</th>
+                        <th>Entidad</th>
+                        <th>Tipo</th>
                         <th>Meta</th>
                         <th>Valor día</th>
                         <th>Cumplimiento</th>
@@ -612,10 +631,11 @@ export default function DailyView({ accessLevel, processes, indicators }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {dailyPersonRows.map((row, index) => (
-                        <tr key={buildStablePersonRowId(row, index)}>
-                          <td>{row.person_code || "-"}</td>
-                          <td>{row.person_name || "-"}</td>
+                      {dailyEntityRows.map((row, index) => (
+                        <tr key={buildStableEntityRowId(row, index)}>
+                          <td>{row.entity_code || "-"}</td>
+                          <td>{row.entity_name || "-"}</td>
+                          <td>{row.entity_type || "-"}</td>
                           <td>{formatPlainNumber(row.target_value || 0)}</td>
                           <td>
                             <input
@@ -623,7 +643,7 @@ export default function DailyView({ accessLevel, processes, indicators }) {
                               step="0.01"
                               value={row.value}
                               onChange={(e) =>
-                                updateDailyPersonRow(index, "value", e.target.value)
+                                updateDailyEntityRow(index, "value", e.target.value)
                               }
                               placeholder="Valor"
                             />
@@ -637,7 +657,11 @@ export default function DailyView({ accessLevel, processes, indicators }) {
                             <input
                               value={row.observation}
                               onChange={(e) =>
-                                updateDailyPersonRow(index, "observation", e.target.value)
+                                updateDailyEntityRow(
+                                  index,
+                                  "observation",
+                                  e.target.value
+                                )
                               }
                               placeholder="Observación"
                             />
@@ -645,10 +669,10 @@ export default function DailyView({ accessLevel, processes, indicators }) {
                         </tr>
                       ))}
 
-                      {!dailyPersonRows.length && (
+                      {!dailyEntityRows.length && (
                         <tr>
-                          <td colSpan="6" className="empty">
-                            Este indicador no tiene personas asociadas
+                          <td colSpan="7" className="empty">
+                            Este indicador no tiene entidades asociadas
                           </td>
                         </tr>
                       )}
@@ -723,7 +747,7 @@ export default function DailyView({ accessLevel, processes, indicators }) {
               </div>
             )}
 
-            {!isPersonDailyIndicator && (
+            {!isEntityDailyIndicator && (
               <div className="field">
                 <label>Observación</label>
                 <textarea
@@ -777,11 +801,13 @@ export default function DailyView({ accessLevel, processes, indicators }) {
                   <th>Fecha</th>
                   <th>Indicador</th>
                   <th>Proceso</th>
-                  {isPersonDailyIndicator && <th>Persona</th>}
+                  {isEntityDailyIndicator && <th>Entidad</th>}
                   <th>Valor</th>
                   <th>General</th>
                   <th>Estado</th>
-                  {!isPersonDailyIndicator && <th className="actions-col">Acciones</th>}
+                  {!isEntityDailyIndicator && (
+                    <th className="actions-col">Acciones</th>
+                  )}
                 </tr>
               </thead>
 
@@ -793,13 +819,17 @@ export default function DailyView({ accessLevel, processes, indicators }) {
                       {item.indicator_code} - {item.indicator_name}
                     </td>
                     <td>{item.process_name}</td>
-                    {isPersonDailyIndicator && <td>{item.person_name || "-"}</td>}
+                    {isEntityDailyIndicator && (
+                      <td>{item.entity_name || "-"}</td>
+                    )}
                     <td>{formatRecordValue(item)}</td>
                     <td>{formatGeneral(item.general, item.unit)}</td>
                     <td>
-                      <span className={`status ${item.status}`}>{item.status}</span>
+                      <span className={`status ${item.status}`}>
+                        {item.status}
+                      </span>
                     </td>
-                    {!isPersonDailyIndicator && (
+                    {!isEntityDailyIndicator && (
                       <td>
                         <div className="row-actions">
                           <button
@@ -824,7 +854,10 @@ export default function DailyView({ accessLevel, processes, indicators }) {
 
                 {!dailyResults.length && (
                   <tr>
-                    <td colSpan={isPersonDailyIndicator ? "7" : "8"} className="empty">
+                    <td
+                      colSpan={isEntityDailyIndicator ? "7" : "8"}
+                      className="empty"
+                    >
                       Sin registros para esa fecha
                     </td>
                   </tr>
