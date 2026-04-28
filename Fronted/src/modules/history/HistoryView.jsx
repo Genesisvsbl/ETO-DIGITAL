@@ -53,6 +53,15 @@ function toSafeText(value) {
   return String(value ?? "").trim();
 }
 
+function compareRule(currentValue, operator, ruleValue) {
+  if (operator === ">") return currentValue > ruleValue;
+  if (operator === ">=") return currentValue >= ruleValue;
+  if (operator === "<") return currentValue < ruleValue;
+  if (operator === "<=") return currentValue <= ruleValue;
+  if (operator === "=") return currentValue === ruleValue;
+  return false;
+}
+
 function buildEntityHistorySummary(records) {
   if (!records.length) {
     return {
@@ -254,15 +263,19 @@ export default function HistoryView({
               selectedIndicator.target_operator === ">="
             ) {
               if (target === 0) {
-                general = value >= 0 ? 100 : 0;
+                general = compareRule(value, selectedIndicator.target_operator, target)
+                  ? 100
+                  : 0;
               } else {
                 general = Math.max(0, Math.min(100, (value / target) * 100));
               }
             } else {
-              if (value <= target) {
+              if (compareRule(value, selectedIndicator.target_operator, target)) {
                 general = 100;
               } else if (target === 0) {
                 general = 0;
+              } else if (value === 0) {
+                general = 100;
               } else {
                 general = Math.max(0, Math.min(100, (target / value) * 100));
               }
@@ -276,17 +289,13 @@ export default function HistoryView({
               selectedIndicator.critical_value !== undefined
             ) {
               const criticalValue = Number(selectedIndicator.critical_value);
+
               if (
-                (selectedIndicator.critical_operator === ">" &&
-                  general > criticalValue) ||
-                (selectedIndicator.critical_operator === ">=" &&
-                  general >= criticalValue) ||
-                (selectedIndicator.critical_operator === "<" &&
-                  general < criticalValue) ||
-                (selectedIndicator.critical_operator === "<=" &&
-                  general <= criticalValue) ||
-                (selectedIndicator.critical_operator === "=" &&
-                  general === criticalValue)
+                compareRule(
+                  value,
+                  selectedIndicator.critical_operator,
+                  criticalValue
+                )
               ) {
                 status = "critical";
               }
@@ -299,17 +308,13 @@ export default function HistoryView({
               selectedIndicator.warning_value !== undefined
             ) {
               const warningValue = Number(selectedIndicator.warning_value);
+
               if (
-                (selectedIndicator.warning_operator === ">" &&
-                  general > warningValue) ||
-                (selectedIndicator.warning_operator === ">=" &&
-                  general >= warningValue) ||
-                (selectedIndicator.warning_operator === "<" &&
-                  general < warningValue) ||
-                (selectedIndicator.warning_operator === "<=" &&
-                  general <= warningValue) ||
-                (selectedIndicator.warning_operator === "=" &&
-                  general === warningValue)
+                compareRule(
+                  value,
+                  selectedIndicator.warning_operator,
+                  warningValue
+                )
               ) {
                 status = "warning";
               }
