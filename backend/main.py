@@ -849,12 +849,15 @@ def build_entity_history_row(item: EntityRecord):
             target_value = float(current.target_value or 0)
             break
 
+    measured_value = float(item.value if item.value is not None else 0)
+
     general = calculate_compliance_by_rule(
         item.indicator.target_operator,
         target_value,
-        float(item.value if item.value is not None else 0),
+        measured_value,
     )
-    status = calculate_entity_status(item.indicator, general)
+ 
+    status = calculate_entity_status(item.indicator, measured_value)
 
     return {
         "id": item.id,
@@ -2273,7 +2276,7 @@ def get_entity_dashboard(
             target_value,
             accumulated,
         )
-        status = calculate_entity_status(indicator, compliance)
+        status = calculate_entity_status(indicator, accumulated)
 
         if status == "ok":
             ok_count += 1
