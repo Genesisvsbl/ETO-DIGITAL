@@ -462,8 +462,8 @@ def calculate_status(indicator: Indicator, measured_value: float):
     return "ok"
 
 
-def calculate_entity_status(indicator: Indicator, compliance: float):
-    return calculate_status(indicator, compliance)
+def calculate_entity_status(indicator: Indicator, measured_value: float):
+    return calculate_status(indicator, measured_value)
 
 
 def validate_optional_rule(operator, rule_value, label: str):
@@ -2099,7 +2099,7 @@ def get_entity_capture_grid(
             target_value,
             accumulated,
         )
-        status = calculate_entity_status(indicator, compliance)
+        status = calculate_entity_status(indicator, accumulated)
 
         rows.append(EntityCaptureGridRow(
             entity_id=target.entity_id,
