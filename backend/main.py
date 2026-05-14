@@ -607,6 +607,82 @@ def validate_optional_rule(operator, rule_value, label: str):
         raise HTTPException(status_code=400, detail=f"Operador de {label} no válido")
 
     return operator, rule_value
+
+
+def to_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+
+    if value is None:
+        return False
+
+    if isinstance(value, (int, float)):
+        return value != 0
+
+    clean = str(value).strip().lower()
+    return clean in ["true", "1", "yes", "si", "sí", "on", "checked"]
+
+
+def build_indicator_payload_from_body(body: dict) -> IndicatorCreate:
+    """
+    Meta siempre es obligatoria.
+    Warning y Critical son opcionales e independientes:
+    - use_warning true + operador + valor => guarda warning
+    - use_warning false o regla incompleta => guarda warning como null
+    - use_critical true + operador + valor => guarda critical
+    - use_critical false o regla incompleta => guarda critical como null
+    """
+    body = dict(body or {})
+
+    warning_operator = normalize_optional_operator(body.get("warning_operator"))
+    warning_value = normalize_optional_number(body.get("warning_value"))
+    critical_operator = normalize_optional_operator(body.get("critical_operator"))
+    critical_value = normalize_optional_number(body.get("critical_value"))
+
+    if "use_warning" in body:
+        use_warning = to_bool(body.get("use_warning"))
+    else:
+        use_warning = warning_operator is not None and warning_value is not None
+
+    if "use_critical" in body:
+        use_critical = to_bool(body.get("use_critical"))
+    else:
+        use_critical = critical_operator is not None and critical_value is not None
+
+    if not use_warning or warning_operator is None or warning_value is None:
+        warning_operator = None
+        warning_value = None
+
+    if not use_critical or critical_operator is None or critical_value is None:
+        critical_operator = None
+        critical_value = None
+
+    clean = {
+        "name": StringCleaner(body.get("name")).strip(),
+        "process_id": int(body.get("process_id")),
+        "meeting_level": int(body.get("meeting_level") or 1),
+        "unit": body.get("unit") or "%",
+        "target_operator": body.get("target_operator") or ">=",
+        "target_value": float(body.get("target_value")),
+        "warning_operator": warning_operator,
+        "warning_value": warning_value,
+        "critical_operator": critical_operator,
+        "critical_value": critical_value,
+        "frequency": body.get("frequency") or "day",
+        "capture_mode": body.get("capture_mode") or "single",
+        "shifts": body.get("shifts") or [],
+        "scope_type": body.get("scope_type") or "standard",
+    }
+
+    return IndicatorCreate(**clean)
+
+
+def StringCleaner(value):
+    if value is None:
+        return ""
+    return str(value)
+
+
 def validate_indicator_payload(payload: IndicatorCreate):
     payload.frequency = normalize_frequency(payload.frequency)
     payload.capture_mode = normalize_capture_mode(payload.capture_mode)
@@ -1163,8 +1239,10 @@ def delete_process(process_id: int, db: Session = Depends(get_db)):
 # INDICADORES
 # -------------------------
 @app.post("/indicators", response_model=IndicatorOut)
-def create_indicator(payload: IndicatorCreate, db: Session = Depends(get_db)):
+def create_indicator(payload: dict, db: Session = Depends(get_db)):
     try:
+        payload = build_indicator_payload_from_body(payload)
+
         process = db.query(Process).filter(Process.id == payload.process_id).first()
         if not process:
             raise HTTPException(status_code=404, detail="Proceso no encontrado")
@@ -1235,8 +1313,10 @@ def list_indicators(
 
 
 @app.put("/indicators/{indicator_id}", response_model=IndicatorOut)
-def update_indicator(indicator_id: int, payload: IndicatorCreate, db: Session = Depends(get_db)):
+def update_indicator(indicator_id: int, payload: dict, db: Session = Depends(get_db)):
     try:
+        payload = build_indicator_payload_from_body(payload)
+
         indicator = (
             db.query(Indicator)
             .options(joinedload(Indicator.process))
