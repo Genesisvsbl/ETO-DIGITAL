@@ -335,12 +335,28 @@ def normalize_scope_type(value: Optional[str]) -> str:
 
 def normalize_optional_operator(value: Optional[str]) -> Optional[str]:
     clean = (value or "").strip()
-    return clean if clean else None
+
+    # Warning y Critical son opcionales.
+    # El frontend a veces envia "-", "Opcional" o strings vacios cuando no se selecciona una regla.
+    # Aqui los convertimos a None para que validate_optional_rule no exija valor.
+    if clean.lower() in ["", "-", "opcional", "none", "null", "undefined"]:
+        return None
+
+    return clean
 
 
 def normalize_optional_number(value):
+    # Warning y Critical son opcionales.
+    # Si llega vacio, "-", "Opcional", None, etc., se guarda como None.
     if value is None:
         return None
+
+    if isinstance(value, str):
+        clean = value.strip()
+        if clean.lower() in ["", "-", "opcional", "none", "null", "undefined"]:
+            return None
+        return float(clean)
+
     return float(value)
 
 
