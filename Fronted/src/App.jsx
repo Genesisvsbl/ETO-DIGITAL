@@ -103,6 +103,16 @@ function hasCompleteOptionalRule(form, prefix) {
   );
 }
 
+function optionalRulePayload(source, prefix) {
+  const enabled = hasCompleteOptionalRule(source, prefix);
+
+  return {
+    [`use_${prefix}`]: enabled,
+    [`${prefix}_operator`]: enabled ? source?.[`${prefix}_operator`] : null,
+    [`${prefix}_value`]: enabled ? Number(source?.[`${prefix}_value`]) : null,
+  };
+}
+
 export default function App() {
   const [tab, setTab] = useState("portal");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -323,8 +333,10 @@ export default function App() {
       setLoading(true);
 
       const source = formOverride || indicatorForm;
-      const useWarning = hasCompleteOptionalRule(source, "warning");
-      const useCritical = hasCompleteOptionalRule(source, "critical");
+      const warningRule = optionalRulePayload(source, "warning");
+      const criticalRule = optionalRulePayload(source, "critical");
+      const scopeType = source.scope_type || "standard";
+      const captureMode = scopeType === "entity" ? "single" : source.capture_mode;
 
       const payload = {
         name: String(source.name || "").trim(),
@@ -334,25 +346,23 @@ export default function App() {
         target_operator: source.target_operator,
         target_value: Number(source.target_value),
 
-        // Warning es opcional: si no está seleccionado, se envía null.
-        warning_operator: useWarning ? source.warning_operator : null,
-        warning_value: useWarning ? Number(source.warning_value) : null,
+        // Estos flags son IMPORTANTES porque api.js tambien los usa
+        // para no borrar Warning/Critical al construir el payload final.
+        use_warning: warningRule.use_warning,
+        warning_operator: warningRule.warning_operator,
+        warning_value: warningRule.warning_value,
 
-        // Critical es opcional: si no está seleccionado, se envía null.
-        critical_operator: useCritical ? source.critical_operator : null,
-        critical_value: useCritical ? Number(source.critical_value) : null,
+        use_critical: criticalRule.use_critical,
+        critical_operator: criticalRule.critical_operator,
+        critical_value: criticalRule.critical_value,
 
         frequency: source.frequency,
-        capture_mode:
-          source.scope_type === "entity"
-            ? "single"
-            : source.capture_mode,
+        capture_mode: captureMode,
         shifts:
-          source.scope_type === "entity" ||
-          source.capture_mode === "single"
+          scopeType === "entity" || captureMode === "single"
             ? []
             : normalizeShifts(source.shifts),
-        scope_type: source.scope_type,
+        scope_type: scopeType,
       };
 
       if (editingIndicatorId) {

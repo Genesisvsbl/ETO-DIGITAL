@@ -145,29 +145,39 @@ export default function IndicatorsView({
   function submitIndicatorForm(event) {
     event.preventDefault();
 
+    const warningOperator = useWarning
+      ? optionalOperator(indicatorForm.warning_operator)
+      : null;
+    const warningValue = useWarning
+      ? optionalNumber(indicatorForm.warning_value)
+      : null;
+
+    const criticalOperator = useCritical
+      ? optionalOperator(indicatorForm.critical_operator)
+      : null;
+    const criticalValue = useCritical
+      ? optionalNumber(indicatorForm.critical_value)
+      : null;
+
+    const hasWarning = Boolean(warningOperator) && warningValue !== null;
+    const hasCritical = Boolean(criticalOperator) && criticalValue !== null;
+
     const cleanForm = {
       ...indicatorForm,
-      use_warning: useWarning,
-      use_critical: useCritical,
+      use_warning: hasWarning,
+      use_critical: hasCritical,
       process_id: Number(indicatorForm.process_id),
       meeting_level: Number(accessLevel),
       target_value: Number(indicatorForm.target_value),
-      warning_operator: useWarning
-        ? optionalOperator(indicatorForm.warning_operator)
-        : null,
-      warning_value: useWarning
-        ? optionalNumber(indicatorForm.warning_value)
-        : null,
-      critical_operator: useCritical
-        ? optionalOperator(indicatorForm.critical_operator)
-        : null,
-      critical_value: useCritical
-        ? optionalNumber(indicatorForm.critical_value)
-        : null,
+
+      warning_operator: hasWarning ? warningOperator : null,
+      warning_value: hasWarning ? warningValue : null,
+
+      critical_operator: hasCritical ? criticalOperator : null,
+      critical_value: hasCritical ? criticalValue : null,
     };
 
-    setIndicatorForm(cleanForm);
-    handleCreateIndicator({ preventDefault: () => {} }, cleanForm);
+    handleCreateIndicator(event, cleanForm);
   }
 
   return (
@@ -414,7 +424,7 @@ export default function IndicatorsView({
                         ...indicatorForm,
                         use_critical: e.target.checked,
                         critical_operator: e.target.checked
-                          ? indicatorForm.critical_operator || "<"
+                          ? indicatorForm.critical_operator || "<="
                           : null,
                         critical_value: e.target.checked
                           ? indicatorForm.critical_value ?? ""
