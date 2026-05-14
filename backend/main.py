@@ -366,6 +366,7 @@ def force_optional_threshold_columns():
                     connection.execute(
                         text(f"ALTER TABLE indicators ALTER COLUMN {column} DROP NOT NULL")
                     )
+                    print(f"OK: columna {column} ahora permite NULL")
                 except Exception as e:
                     print(f"No se pudo quitar NOT NULL de {column}:", repr(e))
 
@@ -606,8 +607,6 @@ def validate_optional_rule(operator, rule_value, label: str):
         raise HTTPException(status_code=400, detail=f"Operador de {label} no válido")
 
     return operator, rule_value
-
-
 def validate_indicator_payload(payload: IndicatorCreate):
     payload.frequency = normalize_frequency(payload.frequency)
     payload.capture_mode = normalize_capture_mode(payload.capture_mode)
