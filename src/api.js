@@ -4,15 +4,20 @@ const API_URL =
 async function request(path, options = {}) {
   const url = `${API_URL}${path}`;
 
+  const headers = {
+    ...(options.headers || {}),
+  };
+
+  if (options.body) {
+    headers["Content-Type"] = "application/json";
+  }
+
   let res;
 
   try {
     res = await fetch(url, {
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {}),
-      },
       ...options,
+      headers,
     });
   } catch (error) {
     console.error("Error de conexión API:", url, error);
@@ -51,7 +56,12 @@ async function request(path, options = {}) {
   }
 
   if (res.status === 204) return null;
-  return res.json();
+
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
 }
 
 function buildQuery(params = {}) {
