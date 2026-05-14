@@ -125,8 +125,14 @@ function buildIndicatorPayload(payload) {
   const captureMode =
     scopeType === "entity" ? "single" : payload.capture_mode || "single";
 
-  const useWarning = Boolean(payload.use_warning);
-  const useCritical = Boolean(payload.use_critical);
+  const warningOperator = cleanOptionalOperator(payload.warning_operator);
+  const warningValue = cleanOptionalNumber(payload.warning_value);
+
+  const criticalOperator = cleanOptionalOperator(payload.critical_operator);
+  const criticalValue = cleanOptionalNumber(payload.critical_value);
+
+  const hasWarning = warningOperator !== null && warningValue !== null;
+  const hasCritical = criticalOperator !== null && criticalValue !== null;
 
   return {
     ...payload,
@@ -135,19 +141,13 @@ function buildIndicatorPayload(payload) {
     meeting_level: Number(payload.meeting_level || 2),
     target_value: Number(payload.target_value),
 
-    warning_operator: useWarning
-      ? cleanOptionalOperator(payload.warning_operator)
-      : null,
-    warning_value: useWarning
-      ? cleanOptionalNumber(payload.warning_value)
-      : null,
+    use_warning: hasWarning,
+    warning_operator: hasWarning ? warningOperator : null,
+    warning_value: hasWarning ? warningValue : null,
 
-    critical_operator: useCritical
-      ? cleanOptionalOperator(payload.critical_operator)
-      : null,
-    critical_value: useCritical
-      ? cleanOptionalNumber(payload.critical_value)
-      : null,
+    use_critical: hasCritical,
+    critical_operator: hasCritical ? criticalOperator : null,
+    critical_value: hasCritical ? criticalValue : null,
 
     scope_type: scopeType,
     capture_mode: captureMode,
