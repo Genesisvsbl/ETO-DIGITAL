@@ -2,24 +2,36 @@ const API_URL =
   import.meta.env.VITE_API_URL || "https://eto-digital.onrender.com";
 
 async function request(path, options = {}) {
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  const url = `${API_URL}${path}`;
 
-  if (!res.ok) {
-    let message = "Error en la solicitud";
-    try {
-      const data = await res.json();
-      message = data.detail || data.message || message;
-    } catch {
-      //
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+      ...options,
+    });
+
+    if (!res.ok) {
+      let message = "Error en la solicitud";
+
+      try {
+        const data = await res.json();
+        message = data.detail || data.message || message;
+      } catch {
+        //
+      }
+
+      throw new Error(`${message} (${res.status})`);
     }
-    throw new Error(message);
-  }
 
-  if (res.status === 204) return null;
-  return res.json();
+    if (res.status === 204) return null;
+    return res.json();
+  } catch (error) {
+    console.error("API request failed:", url, error);
+    throw new Error(`No se pudo conectar con el servidor: ${url}`);
+  }
 }
 
 function buildQuery(params = {}) {
@@ -37,6 +49,79 @@ function buildQuery(params = {}) {
   });
 
   return query.toString();
+}
+
+function cleanOptionalOperator(value) {
+  if (value === null || value === undefined) return null;
+
+  const clean = String(value).trim();
+
+  if (
+    clean === "" ||
+    clean === "-" ||
+    clean.toLowerCase() === "opcional" ||
+    clean.toLowerCase() === "none" ||
+    clean.toLowerCase() === "null" ||
+    clean.toLowerCase() === "undefined"
+  ) {
+    return null;
+  }
+
+  return clean;
+}
+
+function cleanOptionalNumber(value) {
+  if (value === null || value === undefined) return null;
+
+  const clean = String(value).trim();
+
+  if (
+    clean === "" ||
+    clean === "-" ||
+    clean.toLowerCase() === "opcional" ||
+    clean.toLowerCase() === "none" ||
+    clean.toLowerCase() === "null" ||
+    clean.toLowerCase() === "undefined"
+  ) {
+    return null;
+  }
+
+  const parsed = Number(clean);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildIndicatorPayload(payload) {
+  const scopeType = payload.scope_type || "standard";
+  const captureMode =
+    scopeType === "entity" ? "single" : payload.capture_mode || "single";
+
+  return {
+    ...payload,
+    process_id: Number(payload.process_id),
+    meeting_level: Number(payload.meeting_level || 2),
+    target_value: Number(payload.target_value),
+
+    warning_operator: payload.use_warning
+      ? cleanOptionalOperator(payload.warning_operator)
+      : null,
+    warning_value: payload.use_warning
+      ? cleanOptionalNumber(payload.warning_value)
+      : null,
+
+    critical_operator: payload.use_critical
+      ? cleanOptionalOperator(payload.critical_operator)
+      : null,
+    critical_value: payload.use_critical
+      ? cleanOptionalNumber(payload.critical_value)
+      : null,
+
+    scope_type: scopeType,
+    capture_mode: captureMode,
+    shifts:
+      scopeType === "entity" || captureMode === "single"
+        ? []
+        : payload.shifts || [],
+  };
 }
 
 const API = {
@@ -78,31 +163,13 @@ const API = {
   createIndicator: (payload) =>
     request("/indicators", {
       method: "POST",
-      body: JSON.stringify({
-        ...payload,
-        scope_type: payload.scope_type || "standard",
-        capture_mode:
-          payload.scope_type === "entity" ? "single" : payload.capture_mode,
-        shifts:
-          payload.scope_type === "entity" || payload.capture_mode === "single"
-            ? []
-            : payload.shifts || [],
-      }),
+      body: JSON.stringify(buildIndicatorPayload(payload)),
     }),
 
   updateIndicator: (id, payload) =>
     request(`/indicators/${id}`, {
       method: "PUT",
-      body: JSON.stringify({
-        ...payload,
-        scope_type: payload.scope_type || "standard",
-        capture_mode:
-          payload.scope_type === "entity" ? "single" : payload.capture_mode,
-        shifts:
-          payload.scope_type === "entity" || payload.capture_mode === "single"
-            ? []
-            : payload.shifts || [],
-      }),
+      body: JSON.stringify(buildIndicatorPayload(payload)),
     }),
 
   deleteIndicator: (id) =>
