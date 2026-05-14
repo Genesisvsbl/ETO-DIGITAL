@@ -91,33 +91,16 @@ function normalizeShifts(shifts) {
   return [];
 }
 
-function hasOptionalNumber(value) {
+function hasOptionalValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== "";
 }
 
-function buildOptionalRule(enabled, operator, value) {
-  if (!enabled) {
-    return {
-      operator: null,
-      value: null,
-    };
-  }
-
-  if (!operator || !hasOptionalNumber(value)) {
-    return {
-      operator: null,
-      value: null,
-    };
-  }
-
-  return {
-    operator,
-    value: Number(value),
-  };
-}
-
-function hasSavedRule(operator, value) {
-  return !!operator && hasOptionalNumber(value);
+function hasCompleteOptionalRule(form, prefix) {
+  return (
+    form?.[`use_${prefix}`] === true &&
+    !!form?.[`${prefix}_operator`] &&
+    hasOptionalValue(form?.[`${prefix}_value`])
+  );
 }
 
 export default function App() {
@@ -336,20 +319,12 @@ export default function App() {
   async function handleCreateIndicator(e, formOverride = null) {
     e.preventDefault();
 
-    const source = formOverride || indicatorForm;
-    const warningRule = buildOptionalRule(
-      !!source.use_warning,
-      source.warning_operator,
-      source.warning_value
-    );
-    const criticalRule = buildOptionalRule(
-      !!source.use_critical,
-      source.critical_operator,
-      source.critical_value
-    );
-
     try {
       setLoading(true);
+
+      const source = formOverride || indicatorForm;
+      const useWarning = hasCompleteOptionalRule(source, "warning");
+      const useCritical = hasCompleteOptionalRule(source, "critical");
 
       const payload = {
         name: String(source.name || "").trim(),
@@ -358,10 +333,15 @@ export default function App() {
         unit: source.unit,
         target_operator: source.target_operator,
         target_value: Number(source.target_value),
-        warning_operator: warningRule.operator,
-        warning_value: warningRule.value,
-        critical_operator: criticalRule.operator,
-        critical_value: criticalRule.value,
+
+        // Warning es opcional: si no está seleccionado, se envía null.
+        warning_operator: useWarning ? source.warning_operator : null,
+        warning_value: useWarning ? Number(source.warning_value) : null,
+
+        // Critical es opcional: si no está seleccionado, se envía null.
+        critical_operator: useCritical ? source.critical_operator : null,
+        critical_value: useCritical ? Number(source.critical_value) : null,
+
         frequency: source.frequency,
         capture_mode:
           source.scope_type === "entity"
@@ -395,6 +375,12 @@ export default function App() {
   function handleEditIndicator(item) {
     setTab("indicators");
     setEditingIndicatorId(item.id);
+
+    const hasWarning =
+      !!item.warning_operator && hasOptionalValue(item.warning_value);
+    const hasCritical =
+      !!item.critical_operator && hasOptionalValue(item.critical_value);
+
     setIndicatorForm({
       name: item.name,
       process_id: String(item.process_id),
@@ -402,12 +388,12 @@ export default function App() {
       unit: item.unit,
       target_operator: item.target_operator,
       target_value: item.target_value,
-      use_warning: hasSavedRule(item.warning_operator, item.warning_value),
-      warning_operator: item.warning_operator || null,
-      warning_value: item.warning_value ?? "",
-      use_critical: hasSavedRule(item.critical_operator, item.critical_value),
-      critical_operator: item.critical_operator || null,
-      critical_value: item.critical_value ?? "",
+      use_warning: hasWarning,
+      warning_operator: hasWarning ? item.warning_operator : null,
+      warning_value: hasWarning ? item.warning_value : "",
+      use_critical: hasCritical,
+      critical_operator: hasCritical ? item.critical_operator : null,
+      critical_value: hasCritical ? item.critical_value : "",
       frequency: item.frequency || "day",
       capture_mode: item.capture_mode || "shifts",
       shifts: normalizeShifts(item.shifts),
