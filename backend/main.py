@@ -229,6 +229,26 @@ def run_safe_migrations():
                     text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS critical_value DOUBLE PRECISION")
                 )
 
+                # Warning y Critical deben ser opcionales en bases ya existentes.
+                # Si la tabla fue creada antes con NOT NULL, create_all no cambia esa restriccion.
+                # Estas sentencias eliminan el NOT NULL en PostgreSQL.
+                try:
+                    connection.execute(text("ALTER TABLE indicators ALTER COLUMN warning_operator DROP NOT NULL"))
+                except Exception:
+                    pass
+                try:
+                    connection.execute(text("ALTER TABLE indicators ALTER COLUMN warning_value DROP NOT NULL"))
+                except Exception:
+                    pass
+                try:
+                    connection.execute(text("ALTER TABLE indicators ALTER COLUMN critical_operator DROP NOT NULL"))
+                except Exception:
+                    pass
+                try:
+                    connection.execute(text("ALTER TABLE indicators ALTER COLUMN critical_value DROP NOT NULL"))
+                except Exception:
+                    pass
+
 
                 try:
                     connection.execute(
