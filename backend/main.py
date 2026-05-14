@@ -46,7 +46,7 @@ app = FastAPI(title="ETO DIGITAL API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -122,6 +122,35 @@ def run_safe_migrations():
                     connection.execute(
                         text("ALTER TABLE indicators ADD COLUMN scope_type VARCHAR NOT NULL DEFAULT 'standard'")
                     )
+                if "unit" not in indicator_columns:
+                    connection.execute(
+                        text("ALTER TABLE indicators ADD COLUMN unit VARCHAR NOT NULL DEFAULT '%'")
+                    )
+                if "target_operator" not in indicator_columns:
+                    connection.execute(
+                        text("ALTER TABLE indicators ADD COLUMN target_operator VARCHAR NOT NULL DEFAULT '>='")
+                    )
+                if "target_value" not in indicator_columns:
+                    connection.execute(
+                        text("ALTER TABLE indicators ADD COLUMN target_value FLOAT NOT NULL DEFAULT 0")
+                    )
+                if "warning_operator" not in indicator_columns:
+                    connection.execute(
+                        text("ALTER TABLE indicators ADD COLUMN warning_operator VARCHAR")
+                    )
+                if "warning_value" not in indicator_columns:
+                    connection.execute(
+                        text("ALTER TABLE indicators ADD COLUMN warning_value FLOAT")
+                    )
+                if "critical_operator" not in indicator_columns:
+                    connection.execute(
+                        text("ALTER TABLE indicators ADD COLUMN critical_operator VARCHAR")
+                    )
+                if "critical_value" not in indicator_columns:
+                    connection.execute(
+                        text("ALTER TABLE indicators ADD COLUMN critical_value FLOAT")
+                    )
+
 
                 if "single_value" not in daily_record_columns:
                     connection.execute(text("ALTER TABLE daily_records ADD COLUMN single_value FLOAT"))
@@ -178,6 +207,28 @@ def run_safe_migrations():
                 connection.execute(
                     text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS shifts VARCHAR NOT NULL DEFAULT 'A,B,C'")
                 )
+                connection.execute(
+                    text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS unit VARCHAR NOT NULL DEFAULT '%'")
+                )
+                connection.execute(
+                    text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS target_operator VARCHAR NOT NULL DEFAULT '>='")
+                )
+                connection.execute(
+                    text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS target_value DOUBLE PRECISION NOT NULL DEFAULT 0")
+                )
+                connection.execute(
+                    text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS warning_operator VARCHAR")
+                )
+                connection.execute(
+                    text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS warning_value DOUBLE PRECISION")
+                )
+                connection.execute(
+                    text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS critical_operator VARCHAR")
+                )
+                connection.execute(
+                    text("ALTER TABLE indicators ADD COLUMN IF NOT EXISTS critical_value DOUBLE PRECISION")
+                )
+
 
                 try:
                     connection.execute(
@@ -355,9 +406,15 @@ def normalize_optional_number(value):
         clean = value.strip()
         if clean.lower() in ["", "-", "opcional", "none", "null", "undefined"]:
             return None
-        return float(clean)
+        try:
+            return float(clean)
+        except (TypeError, ValueError):
+            return None
 
-    return float(value)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def is_blank_string(value) -> bool:
@@ -371,7 +428,13 @@ def has_explicit_value(value) -> bool:
 def generate_indicator_code(db: Session):
     last = db.query(Indicator).order_by(Indicator.id.desc()).first()
     next_id = 1 if not last else last.id + 1
-    return f"IND-{next_id:04d}"
+    code = f"IND-{next_id:04d}"
+
+    while db.query(Indicator).filter(Indicator.code == code).first():
+        next_id += 1
+        code = f"IND-{next_id:04d}"
+
+    return code
 
 
 def generate_entity_code(db: Session):
@@ -486,14 +549,10 @@ def validate_optional_rule(operator, rule_value, label: str):
     operator = normalize_optional_operator(operator)
     rule_value = normalize_optional_number(rule_value)
 
-    if operator is None and rule_value is None:
-        return None, None
-
+    # Warning y Critical NO son obligatorios.
+    # Si falta operador, valor, o ambos, simplemente se ignora la regla.
     if operator is None or rule_value is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Debes completar operador y valor para {label}"
-        )
+        return None, None
 
     if operator not in VALID_OPERATORS:
         raise HTTPException(status_code=400, detail=f"Operador de {label} no válido")
@@ -1058,36 +1117,54 @@ def delete_process(process_id: int, db: Session = Depends(get_db)):
 # -------------------------
 @app.post("/indicators", response_model=IndicatorOut)
 def create_indicator(payload: IndicatorCreate, db: Session = Depends(get_db)):
-    process = db.query(Process).filter(Process.id == payload.process_id).first()
-    if not process:
-        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+    try:
+        process = db.query(Process).filter(Process.id == payload.process_id).first()
+        if not process:
+            raise HTTPException(status_code=404, detail="Proceso no encontrado")
 
-    shifts_clean = validate_indicator_payload(payload)
-    code = generate_indicator_code(db)
+        shifts_clean = validate_indicator_payload(payload)
+        code = generate_indicator_code(db)
 
-    indicator = Indicator(
-        code=code,
-        name=payload.name.strip(),
-        process_id=payload.process_id,
-        meeting_level=payload.meeting_level,
-        unit=payload.unit,
-        target_operator=payload.target_operator,
-        target_value=payload.target_value,
-        warning_operator=payload.warning_operator,
-        warning_value=payload.warning_value,
-        critical_operator=payload.critical_operator,
-        critical_value=payload.critical_value,
-        frequency=payload.frequency,
-        capture_mode="single" if payload.capture_mode == "single" else "shifts",
-        shifts="" if payload.capture_mode == "single" else ",".join(shifts_clean),
-        scope_type=payload.scope_type,
-    )
-    db.add(indicator)
-    db.commit()
-    db.refresh(indicator)
+        indicator = Indicator(
+            code=code,
+            name=payload.name.strip(),
+            process_id=payload.process_id,
+            meeting_level=payload.meeting_level,
+            unit=payload.unit,
+            target_operator=payload.target_operator,
+            target_value=payload.target_value,
+            warning_operator=payload.warning_operator,
+            warning_value=payload.warning_value,
+            critical_operator=payload.critical_operator,
+            critical_value=payload.critical_value,
+            frequency=payload.frequency,
+            capture_mode="single" if payload.capture_mode == "single" else "shifts",
+            shifts="" if payload.capture_mode == "single" else ",".join(shifts_clean),
+            scope_type=payload.scope_type,
+        )
 
-    indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == indicator.id).first()
-    return build_indicator_out(indicator)
+        db.add(indicator)
+        db.commit()
+        db.refresh(indicator)
+
+        indicator = (
+            db.query(Indicator)
+            .options(joinedload(Indicator.process))
+            .filter(Indicator.id == indicator.id)
+            .first()
+        )
+        return build_indicator_out(indicator)
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        db.rollback()
+        print("ERROR CREANDO INDICADOR:", repr(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error creando indicador: {repr(e)}"
+        )
 
 
 @app.get("/indicators", response_model=list[IndicatorOut])
@@ -1112,43 +1189,66 @@ def list_indicators(
 
 @app.put("/indicators/{indicator_id}", response_model=IndicatorOut)
 def update_indicator(indicator_id: int, payload: IndicatorCreate, db: Session = Depends(get_db)):
-    indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == indicator_id).first()
-    if not indicator:
-        raise HTTPException(status_code=404, detail="Indicador no encontrado")
+    try:
+        indicator = (
+            db.query(Indicator)
+            .options(joinedload(Indicator.process))
+            .filter(Indicator.id == indicator_id)
+            .first()
+        )
 
-    process = db.query(Process).filter(Process.id == payload.process_id).first()
-    if not process:
-        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+        if not indicator:
+            raise HTTPException(status_code=404, detail="Indicador no encontrado")
 
-    shifts_clean = validate_indicator_payload(payload)
+        process = db.query(Process).filter(Process.id == payload.process_id).first()
+        if not process:
+            raise HTTPException(status_code=404, detail="Proceso no encontrado")
 
-    indicator.name = payload.name.strip()
-    indicator.process_id = payload.process_id
-    indicator.meeting_level = payload.meeting_level
-    indicator.unit = payload.unit
-    indicator.target_operator = payload.target_operator
-    indicator.target_value = payload.target_value
-    indicator.warning_operator = payload.warning_operator
-    indicator.warning_value = payload.warning_value
-    indicator.critical_operator = payload.critical_operator
-    indicator.critical_value = payload.critical_value
-    indicator.frequency = payload.frequency
-    indicator.capture_mode = "single" if payload.capture_mode == "single" else "shifts"
-    indicator.shifts = "" if payload.capture_mode == "single" else ",".join(shifts_clean)
-    indicator.scope_type = payload.scope_type
+        shifts_clean = validate_indicator_payload(payload)
 
-    if indicator.capture_mode == "single":
-        records = db.query(DailyRecord).filter(DailyRecord.indicator_id == indicator.id).all()
-        for r in records:
-            r.shift_a = None
-            r.shift_b = None
-            r.shift_c = None
+        indicator.name = payload.name.strip()
+        indicator.process_id = payload.process_id
+        indicator.meeting_level = payload.meeting_level
+        indicator.unit = payload.unit
+        indicator.target_operator = payload.target_operator
+        indicator.target_value = payload.target_value
+        indicator.warning_operator = payload.warning_operator
+        indicator.warning_value = payload.warning_value
+        indicator.critical_operator = payload.critical_operator
+        indicator.critical_value = payload.critical_value
+        indicator.frequency = payload.frequency
+        indicator.capture_mode = "single" if payload.capture_mode == "single" else "shifts"
+        indicator.shifts = "" if payload.capture_mode == "single" else ",".join(shifts_clean)
+        indicator.scope_type = payload.scope_type
 
-    db.commit()
-    db.refresh(indicator)
+        if indicator.capture_mode == "single":
+            records = db.query(DailyRecord).filter(DailyRecord.indicator_id == indicator.id).all()
+            for r in records:
+                r.shift_a = None
+                r.shift_b = None
+                r.shift_c = None
 
-    indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == indicator.id).first()
-    return build_indicator_out(indicator)
+        db.commit()
+        db.refresh(indicator)
+
+        indicator = (
+            db.query(Indicator)
+            .options(joinedload(Indicator.process))
+            .filter(Indicator.id == indicator.id)
+            .first()
+        )
+        return build_indicator_out(indicator)
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        db.rollback()
+        print("ERROR ACTUALIZANDO INDICADOR:", repr(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error actualizando indicador: {repr(e)}"
+        )
 
 
 @app.delete("/indicators/{indicator_id}")
