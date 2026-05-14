@@ -43,6 +43,19 @@ function buildEntityOptionLabel(entity) {
   return parts.join(" ");
 }
 
+
+function hasRuleValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function withThresholdFlags(item) {
+  return {
+    ...item,
+    use_warning: !!item.warning_operator && hasRuleValue(item.warning_value),
+    use_critical: !!item.critical_operator && hasRuleValue(item.critical_value),
+  };
+}
+
 export default function IndicatorsView({
   accessLevel,
   processes,
@@ -110,6 +123,23 @@ export default function IndicatorsView({
   const useWarning = !!indicatorForm.use_warning;
   const useCritical = !!indicatorForm.use_critical;
 
+  function submitIndicatorForm(event) {
+    const cleanForm = {
+      ...indicatorForm,
+      warning_operator: useWarning ? indicatorForm.warning_operator : null,
+      warning_value: useWarning ? indicatorForm.warning_value : null,
+      critical_operator: useCritical ? indicatorForm.critical_operator : null,
+      critical_value: useCritical ? indicatorForm.critical_value : null,
+    };
+
+    // Se actualiza el estado y también se limpia el objeto actual para que
+    // el handler padre no envíe valores antiguos de Warning/Critical.
+    Object.assign(indicatorForm, cleanForm);
+    setIndicatorForm(cleanForm);
+
+    handleCreateIndicator(event, cleanForm);
+  }
+
   return (
     <section className="content-card">
       <div className="card-header-block">
@@ -126,7 +156,7 @@ export default function IndicatorsView({
             {editingIndicatorId ? "Editar indicador" : "Crear indicador"}
           </div>
 
-          <form onSubmit={handleCreateIndicator} className="form">
+          <form onSubmit={submitIndicatorForm} className="form">
             <div className="field">
               <label>Nombre</label>
               <input
@@ -555,7 +585,7 @@ export default function IndicatorsView({
                         <button
                           type="button"
                           className="table-btn edit"
-                          onClick={() => handleEditIndicator(item)}
+                          onClick={() => handleEditIndicator(withThresholdFlags(item))}
                         >
                           Editar
                         </button>
