@@ -346,7 +346,35 @@ def run_safe_migrations():
             pass
 
 
+def force_optional_threshold_columns():
+    with engine.begin() as connection:
+        try:
+            dialect_name = connection.dialect.name
+
+            if dialect_name == "sqlite":
+                return
+
+            columns = [
+                "warning_operator",
+                "warning_value",
+                "critical_operator",
+                "critical_value",
+            ]
+
+            for column in columns:
+                try:
+                    connection.execute(
+                        text(f"ALTER TABLE indicators ALTER COLUMN {column} DROP NOT NULL")
+                    )
+                except Exception as e:
+                    print(f"No se pudo quitar NOT NULL de {column}:", repr(e))
+
+        except Exception as e:
+            print("ERROR EN force_optional_threshold_columns:", repr(e))
+
+
 run_safe_migrations()
+force_optional_threshold_columns()
 Base.metadata.create_all(bind=engine)
 
 
