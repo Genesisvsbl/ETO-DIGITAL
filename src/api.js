@@ -39,6 +39,42 @@ function buildQuery(params = {}) {
   return query.toString();
 }
 
+function hasOptionalValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function cleanIndicatorPayload(payload = {}) {
+  const useWarning =
+    payload.use_warning === true &&
+    payload.warning_operator &&
+    hasOptionalValue(payload.warning_value);
+
+  const useCritical =
+    payload.use_critical === true &&
+    payload.critical_operator &&
+    hasOptionalValue(payload.critical_value);
+
+  return {
+    ...payload,
+
+    scope_type: payload.scope_type || "standard",
+
+    capture_mode:
+      payload.scope_type === "entity" ? "single" : payload.capture_mode,
+
+    shifts:
+      payload.scope_type === "entity" || payload.capture_mode === "single"
+        ? []
+        : payload.shifts || [],
+
+    warning_operator: useWarning ? payload.warning_operator : null,
+    warning_value: useWarning ? Number(payload.warning_value) : null,
+
+    critical_operator: useCritical ? payload.critical_operator : null,
+    critical_value: useCritical ? Number(payload.critical_value) : null,
+  };
+}
+
 const API = {
   // =========================
   // PROCESOS
@@ -78,31 +114,13 @@ const API = {
   createIndicator: (payload) =>
     request("/indicators", {
       method: "POST",
-      body: JSON.stringify({
-        ...payload,
-        scope_type: payload.scope_type || "standard",
-        capture_mode:
-          payload.scope_type === "entity" ? "single" : payload.capture_mode,
-        shifts:
-          payload.scope_type === "entity" || payload.capture_mode === "single"
-            ? []
-            : payload.shifts || [],
-      }),
+      body: JSON.stringify(cleanIndicatorPayload(payload)),
     }),
 
   updateIndicator: (id, payload) =>
     request(`/indicators/${id}`, {
       method: "PUT",
-      body: JSON.stringify({
-        ...payload,
-        scope_type: payload.scope_type || "standard",
-        capture_mode:
-          payload.scope_type === "entity" ? "single" : payload.capture_mode,
-        shifts:
-          payload.scope_type === "entity" || payload.capture_mode === "single"
-            ? []
-            : payload.shifts || [],
-      }),
+      body: JSON.stringify(cleanIndicatorPayload(payload)),
     }),
 
   deleteIndicator: (id) =>
