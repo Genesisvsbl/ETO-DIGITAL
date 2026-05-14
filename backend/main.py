@@ -46,7 +46,7 @@ app = FastAPI(title="ETO DIGITAL API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -355,15 +355,9 @@ def normalize_optional_number(value):
         clean = value.strip()
         if clean.lower() in ["", "-", "opcional", "none", "null", "undefined"]:
             return None
-        try:
-            return float(clean)
-        except ValueError:
-            return None
+        return float(clean)
 
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    return float(value)
 
 
 def is_blank_string(value) -> bool:
@@ -1064,55 +1058,37 @@ def delete_process(process_id: int, db: Session = Depends(get_db)):
 # -------------------------
 @app.post("/indicators", response_model=IndicatorOut)
 def create_indicator(payload: IndicatorCreate, db: Session = Depends(get_db)):
-    try:
-        process = db.query(Process).filter(Process.id == payload.process_id).first()
-        if not process:
-            raise HTTPException(status_code=404, detail="Proceso no encontrado")
+    process = db.query(Process).filter(Process.id == payload.process_id).first()
+    if not process:
+        raise HTTPException(status_code=404, detail="Proceso no encontrado")
 
-        shifts_clean = validate_indicator_payload(payload)
-        code = generate_indicator_code(db)
+    shifts_clean = validate_indicator_payload(payload)
+    code = generate_indicator_code(db)
 
-        indicator = Indicator(
-            code=code,
-            name=payload.name.strip(),
-            process_id=payload.process_id,
-            meeting_level=payload.meeting_level,
-            unit=payload.unit,
-            target_operator=payload.target_operator,
-            target_value=payload.target_value,
-            warning_operator=payload.warning_operator,
-            warning_value=payload.warning_value,
-            critical_operator=payload.critical_operator,
-            critical_value=payload.critical_value,
-            frequency=payload.frequency,
-            capture_mode="single" if payload.capture_mode == "single" else "shifts",
-            shifts="" if payload.capture_mode == "single" else ",".join(shifts_clean),
-            scope_type=payload.scope_type,
-        )
+    indicator = Indicator(
+        code=code,
+        name=payload.name.strip(),
+        process_id=payload.process_id,
+        meeting_level=payload.meeting_level,
+        unit=payload.unit,
+        target_operator=payload.target_operator,
+        target_value=payload.target_value,
+        warning_operator=payload.warning_operator,
+        warning_value=payload.warning_value,
+        critical_operator=payload.critical_operator,
+        critical_value=payload.critical_value,
+        frequency=payload.frequency,
+        capture_mode="single" if payload.capture_mode == "single" else "shifts",
+        shifts="" if payload.capture_mode == "single" else ",".join(shifts_clean),
+        scope_type=payload.scope_type,
+    )
+    db.add(indicator)
+    db.commit()
+    db.refresh(indicator)
 
-        db.add(indicator)
-        db.commit()
-        db.refresh(indicator)
+    indicator = db.query(Indicator).options(joinedload(Indicator.process)).filter(Indicator.id == indicator.id).first()
+    return build_indicator_out(indicator)
 
-        indicator = (
-            db.query(Indicator)
-            .options(joinedload(Indicator.process))
-            .filter(Indicator.id == indicator.id)
-            .first()
-        )
-
-        return build_indicator_out(indicator)
-
-    except HTTPException:
-        raise
-
-    except Exception as e:
-        db.rollback()
-        print("ERROR CREANDO INDICADOR:", repr(e))
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error interno creando indicador: {repr(e)}"
-        )
 
 @app.get("/indicators", response_model=list[IndicatorOut])
 def list_indicators(
