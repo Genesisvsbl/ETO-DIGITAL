@@ -4,34 +4,54 @@ const API_URL =
 async function request(path, options = {}) {
   const url = `${API_URL}${path}`;
 
+  let res;
+
   try {
-    const res = await fetch(url, {
+    res = await fetch(url, {
       headers: {
         "Content-Type": "application/json",
         ...(options.headers || {}),
       },
       ...options,
     });
-
-    if (!res.ok) {
-      let message = "Error en la solicitud";
-
-      try {
-        const data = await res.json();
-        message = data.detail || data.message || message;
-      } catch {
-        //
-      }
-
-      throw new Error(`${message} (${res.status})`);
-    }
-
-    if (res.status === 204) return null;
-    return res.json();
   } catch (error) {
-    console.error("API request failed:", url, error);
+    console.error("Error de conexión API:", url, error);
     throw new Error(`No se pudo conectar con el servidor: ${url}`);
   }
+
+  if (!res.ok) {
+    let message = "Error en la solicitud";
+
+    try {
+      const data = await res.json();
+
+      if (Array.isArray(data.detail)) {
+        message = data.detail
+          .map((item) => {
+            const campo = Array.isArray(item.loc)
+              ? item.loc.join(".")
+              : "campo";
+            return `${campo}: ${item.msg}`;
+          })
+          .join(" | ");
+      } else {
+        message = data.detail || data.message || message;
+      }
+    } catch {
+      //
+    }
+
+    console.error("Error API:", {
+      url,
+      status: res.status,
+      message,
+    });
+
+    throw new Error(`${message} (${res.status})`);
+  }
+
+  if (res.status === 204) return null;
+  return res.json();
 }
 
 function buildQuery(params = {}) {
@@ -95,23 +115,27 @@ function buildIndicatorPayload(payload) {
   const captureMode =
     scopeType === "entity" ? "single" : payload.capture_mode || "single";
 
+  const useWarning = Boolean(payload.use_warning);
+  const useCritical = Boolean(payload.use_critical);
+
   return {
     ...payload,
+
     process_id: Number(payload.process_id),
     meeting_level: Number(payload.meeting_level || 2),
     target_value: Number(payload.target_value),
 
-    warning_operator: payload.use_warning
+    warning_operator: useWarning
       ? cleanOptionalOperator(payload.warning_operator)
       : null,
-    warning_value: payload.use_warning
+    warning_value: useWarning
       ? cleanOptionalNumber(payload.warning_value)
       : null,
 
-    critical_operator: payload.use_critical
+    critical_operator: useCritical
       ? cleanOptionalOperator(payload.critical_operator)
       : null,
-    critical_value: payload.use_critical
+    critical_value: useCritical
       ? cleanOptionalNumber(payload.critical_value)
       : null,
 
@@ -157,6 +181,7 @@ const API = {
       level: params.level,
       scope_type: params.scope_type,
     });
+
     return request(`/indicators${q ? `?${q}` : ""}`);
   },
 
@@ -203,6 +228,7 @@ const API = {
       process_id,
       level,
     });
+
     return request(`/daily-records/by-date?${q}`);
   },
 
@@ -215,6 +241,7 @@ const API = {
       year,
       month,
     });
+
     return request(`/daily-records/month?${q}`);
   },
 
@@ -241,6 +268,7 @@ const API = {
       active_only: active_only ? "true" : undefined,
       entity_type,
     });
+
     return request(`/entities${q ? `?${q}` : ""}`);
   },
 
@@ -286,6 +314,7 @@ const API = {
       entity_id,
       active_only: active_only ? "true" : undefined,
     });
+
     return request(`/entity-indicator-targets${q ? `?${q}` : ""}`);
   },
 
@@ -293,9 +322,9 @@ const API = {
     request("/entity-indicator-targets", {
       method: "POST",
       body: JSON.stringify({
-        indicator_id: payload.indicator_id,
-        entity_id: payload.entity_id,
-        target_value: payload.target_value,
+        indicator_id: Number(payload.indicator_id),
+        entity_id: Number(payload.entity_id),
+        target_value: Number(payload.target_value),
         is_active: payload.is_active ?? true,
       }),
     }),
@@ -313,6 +342,7 @@ const API = {
       indicator_id,
       record_date,
     });
+
     return request(`/entity-records/grid?${q}`);
   },
 
@@ -320,12 +350,15 @@ const API = {
     request("/entity-records/bulk", {
       method: "POST",
       body: JSON.stringify({
-        indicator_id,
+        indicator_id: Number(indicator_id),
         record_date,
         rows: (rows || []).map((row) => ({
-          entity_id: row.entity_id,
-          value: row.value,
-          observation: row.observation,
+          entity_id: Number(row.entity_id),
+          value:
+            row.value === "" || row.value === null || row.value === undefined
+              ? 0
+              : Number(row.value),
+          observation: row.observation || "",
         })),
       }),
     }),
@@ -337,6 +370,7 @@ const API = {
       year,
       month,
     });
+
     return request(`/entity-records${q ? `?${q}` : ""}`);
   },
 
@@ -352,6 +386,7 @@ const API = {
       process_id,
       indicator_id,
     });
+
     return request(`/history${q ? `?${q}` : ""}`);
   },
 
@@ -371,6 +406,7 @@ const API = {
       process_id,
       indicator_id,
     });
+
     return request(`/history/summary${q ? `?${q}` : ""}`);
   },
 
@@ -384,6 +420,7 @@ const API = {
       day,
       level,
     });
+
     return request(`/dashboard/overview${q ? `?${q}` : ""}`);
   },
 
@@ -405,6 +442,7 @@ const API = {
       level,
       period,
     });
+
     return request(`/dashboard/process?${q}`);
   },
 
@@ -414,6 +452,7 @@ const API = {
       year,
       month,
     });
+
     return request(`/dashboard/entity?${q}`);
   },
 
