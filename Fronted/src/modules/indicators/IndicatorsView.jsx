@@ -44,6 +44,25 @@ function buildEntityOptionLabel(entity) {
 }
 
 
+
+function optionalNumber(value) {
+  if (value === "" || value === null || value === undefined) return null;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function optionalOperator(value) {
+  if (value === "" || value === null || value === undefined) return null;
+
+  const clean = String(value).trim();
+  if (["", "-", "opcional", "none", "null", "undefined"].includes(clean.toLowerCase())) {
+    return null;
+  }
+
+  return clean;
+}
+
 function hasRuleValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== "";
 }
@@ -124,20 +143,31 @@ export default function IndicatorsView({
   const useCritical = !!indicatorForm.use_critical;
 
   function submitIndicatorForm(event) {
+    event.preventDefault();
+
     const cleanForm = {
       ...indicatorForm,
-      warning_operator: useWarning ? indicatorForm.warning_operator : null,
-      warning_value: useWarning ? indicatorForm.warning_value : null,
-      critical_operator: useCritical ? indicatorForm.critical_operator : null,
-      critical_value: useCritical ? indicatorForm.critical_value : null,
+      use_warning: useWarning,
+      use_critical: useCritical,
+      process_id: Number(indicatorForm.process_id),
+      meeting_level: Number(accessLevel),
+      target_value: Number(indicatorForm.target_value),
+      warning_operator: useWarning
+        ? optionalOperator(indicatorForm.warning_operator)
+        : null,
+      warning_value: useWarning
+        ? optionalNumber(indicatorForm.warning_value)
+        : null,
+      critical_operator: useCritical
+        ? optionalOperator(indicatorForm.critical_operator)
+        : null,
+      critical_value: useCritical
+        ? optionalNumber(indicatorForm.critical_value)
+        : null,
     };
 
-    // Se actualiza el estado y también se limpia el objeto actual para que
-    // el handler padre no envíe valores antiguos de Warning/Critical.
-    Object.assign(indicatorForm, cleanForm);
     setIndicatorForm(cleanForm);
-
-    handleCreateIndicator(event, cleanForm);
+    handleCreateIndicator({ preventDefault: () => {} }, cleanForm);
   }
 
   return (

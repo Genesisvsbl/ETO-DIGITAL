@@ -317,7 +317,7 @@ export default function App() {
   }
 
   async function handleCreateIndicator(e, formOverride = null) {
-    e.preventDefault();
+    if (e?.preventDefault) e.preventDefault();
 
     try {
       setLoading(true);

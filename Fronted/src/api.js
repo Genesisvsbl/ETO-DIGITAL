@@ -39,6 +39,64 @@ function buildQuery(params = {}) {
   return query.toString();
 }
 
+function hasOptionalValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function cleanOptionalRule(payload, prefix) {
+  const operatorKey = `${prefix}_operator`;
+  const valueKey = `${prefix}_value`;
+  const useKey = `use_${prefix}`;
+
+  const operator = payload?.[operatorKey];
+  const value = payload?.[valueKey];
+
+  /*
+    Regla:
+    - Si use_warning/use_critical viene en false, se borra.
+    - Si viene en true, debe tener operador y valor.
+    - Si no viene use_warning/use_critical, se conserva si tiene operador y valor.
+  */
+  const isExplicitlyDisabled = payload?.[useKey] === false;
+
+  const isComplete =
+    !isExplicitlyDisabled &&
+    operator &&
+    hasOptionalValue(value);
+
+  return {
+    [operatorKey]: isComplete ? operator : null,
+    [valueKey]: isComplete ? Number(value) : null,
+  };
+}
+
+function cleanIndicatorPayload(payload = {}) {
+  const cleanWarning = cleanOptionalRule(payload, "warning");
+  const cleanCritical = cleanOptionalRule(payload, "critical");
+
+  const scopeType = payload.scope_type || "standard";
+  const captureMode =
+    scopeType === "entity" ? "single" : payload.capture_mode || "single";
+
+  return {
+    ...payload,
+
+    scope_type: scopeType,
+    capture_mode: captureMode,
+
+    shifts:
+      scopeType === "entity" || captureMode === "single"
+        ? []
+        : payload.shifts || [],
+
+    warning_operator: cleanWarning.warning_operator,
+    warning_value: cleanWarning.warning_value,
+
+    critical_operator: cleanCritical.critical_operator,
+    critical_value: cleanCritical.critical_value,
+  };
+}
+
 const API = {
   // =========================
   // PROCESOS
@@ -78,31 +136,13 @@ const API = {
   createIndicator: (payload) =>
     request("/indicators", {
       method: "POST",
-      body: JSON.stringify({
-        ...payload,
-        scope_type: payload.scope_type || "standard",
-        capture_mode:
-          payload.scope_type === "entity" ? "single" : payload.capture_mode,
-        shifts:
-          payload.scope_type === "entity" || payload.capture_mode === "single"
-            ? []
-            : payload.shifts || [],
-      }),
+      body: JSON.stringify(cleanIndicatorPayload(payload)),
     }),
 
   updateIndicator: (id, payload) =>
     request(`/indicators/${id}`, {
       method: "PUT",
-      body: JSON.stringify({
-        ...payload,
-        scope_type: payload.scope_type || "standard",
-        capture_mode:
-          payload.scope_type === "entity" ? "single" : payload.capture_mode,
-        shifts:
-          payload.scope_type === "entity" || payload.capture_mode === "single"
-            ? []
-            : payload.shifts || [],
-      }),
+      body: JSON.stringify(cleanIndicatorPayload(payload)),
     }),
 
   deleteIndicator: (id) =>

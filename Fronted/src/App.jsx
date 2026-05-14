@@ -34,9 +34,11 @@ const EMPTY_INDICATOR_FORM = {
   unit: "%",
   target_operator: ">=",
   target_value: "",
-  warning_operator: ">=",
+  use_warning: false,
+  warning_operator: null,
   warning_value: "",
-  critical_operator: "<",
+  use_critical: false,
+  critical_operator: null,
   critical_value: "",
   frequency: "day",
   capture_mode: "shifts",
@@ -87,6 +89,18 @@ function normalizeShifts(shifts) {
   }
 
   return [];
+}
+
+function hasOptionalValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function hasCompleteOptionalRule(form, prefix) {
+  return (
+    form?.[`use_${prefix}`] === true &&
+    !!form?.[`${prefix}_operator`] &&
+    hasOptionalValue(form?.[`${prefix}_value`])
+  );
 }
 
 export default function App() {
@@ -302,34 +316,43 @@ export default function App() {
     }
   }
 
-  async function handleCreateIndicator(e) {
-    e.preventDefault();
+  async function handleCreateIndicator(e, formOverride = null) {
+    if (e?.preventDefault) e.preventDefault();
 
     try {
       setLoading(true);
 
+      const source = formOverride || indicatorForm;
+      const useWarning = hasCompleteOptionalRule(source, "warning");
+      const useCritical = hasCompleteOptionalRule(source, "critical");
+
       const payload = {
-        name: indicatorForm.name.trim(),
-        process_id: Number(indicatorForm.process_id),
+        name: String(source.name || "").trim(),
+        process_id: Number(source.process_id),
         meeting_level: Number(accessLevel),
-        unit: indicatorForm.unit,
-        target_operator: indicatorForm.target_operator,
-        target_value: Number(indicatorForm.target_value),
-        warning_operator: indicatorForm.warning_operator,
-        warning_value: Number(indicatorForm.warning_value),
-        critical_operator: indicatorForm.critical_operator,
-        critical_value: Number(indicatorForm.critical_value),
-        frequency: indicatorForm.frequency,
+        unit: source.unit,
+        target_operator: source.target_operator,
+        target_value: Number(source.target_value),
+
+        // Warning es opcional: si no está seleccionado, se envía null.
+        warning_operator: useWarning ? source.warning_operator : null,
+        warning_value: useWarning ? Number(source.warning_value) : null,
+
+        // Critical es opcional: si no está seleccionado, se envía null.
+        critical_operator: useCritical ? source.critical_operator : null,
+        critical_value: useCritical ? Number(source.critical_value) : null,
+
+        frequency: source.frequency,
         capture_mode:
-          indicatorForm.scope_type === "entity"
+          source.scope_type === "entity"
             ? "single"
-            : indicatorForm.capture_mode,
+            : source.capture_mode,
         shifts:
-          indicatorForm.scope_type === "entity" ||
-          indicatorForm.capture_mode === "single"
+          source.scope_type === "entity" ||
+          source.capture_mode === "single"
             ? []
-            : normalizeShifts(indicatorForm.shifts),
-        scope_type: indicatorForm.scope_type,
+            : normalizeShifts(source.shifts),
+        scope_type: source.scope_type,
       };
 
       if (editingIndicatorId) {
@@ -352,6 +375,12 @@ export default function App() {
   function handleEditIndicator(item) {
     setTab("indicators");
     setEditingIndicatorId(item.id);
+
+    const hasWarning =
+      !!item.warning_operator && hasOptionalValue(item.warning_value);
+    const hasCritical =
+      !!item.critical_operator && hasOptionalValue(item.critical_value);
+
     setIndicatorForm({
       name: item.name,
       process_id: String(item.process_id),
@@ -359,10 +388,12 @@ export default function App() {
       unit: item.unit,
       target_operator: item.target_operator,
       target_value: item.target_value,
-      warning_operator: item.warning_operator,
-      warning_value: item.warning_value,
-      critical_operator: item.critical_operator,
-      critical_value: item.critical_value,
+      use_warning: hasWarning,
+      warning_operator: hasWarning ? item.warning_operator : null,
+      warning_value: hasWarning ? item.warning_value : "",
+      use_critical: hasCritical,
+      critical_operator: hasCritical ? item.critical_operator : null,
+      critical_value: hasCritical ? item.critical_value : "",
       frequency: item.frequency || "day",
       capture_mode: item.capture_mode || "shifts",
       shifts: normalizeShifts(item.shifts),

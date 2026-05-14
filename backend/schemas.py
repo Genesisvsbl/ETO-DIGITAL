@@ -1,6 +1,6 @@
 from datetime import date
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProcessCreate(BaseModel):
@@ -38,6 +38,32 @@ class IndicatorCreate(BaseModel):
     shifts: List[str] = Field(default_factory=list)
 
     scope_type: str = "standard"
+
+    @field_validator("warning_operator", "critical_operator", mode="before")
+    @classmethod
+    def clean_optional_operator(cls, value):
+        if value is None:
+            return None
+
+        clean = str(value).strip()
+        if clean.lower() in ["", "-", "opcional", "none", "null", "undefined"]:
+            return None
+
+        return clean
+
+    @field_validator("warning_value", "critical_value", mode="before")
+    @classmethod
+    def clean_optional_number(cls, value):
+        if value is None:
+            return None
+
+        if isinstance(value, str):
+            clean = value.strip()
+            if clean.lower() in ["", "-", "opcional", "none", "null", "undefined"]:
+                return None
+            return clean
+
+        return value
 
 
 class IndicatorOut(BaseModel):

@@ -355,9 +355,15 @@ def normalize_optional_number(value):
         clean = value.strip()
         if clean.lower() in ["", "-", "opcional", "none", "null", "undefined"]:
             return None
-        return float(clean)
+        try:
+            return float(clean)
+        except ValueError:
+            return None
 
-    return float(value)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def is_blank_string(value) -> bool:
