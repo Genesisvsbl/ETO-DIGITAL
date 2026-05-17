@@ -115,7 +115,7 @@ function optionalRulePayload(source, prefix) {
 
 export default function App() {
   const [tab, setTab] = useState("portal");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const [accessLevel, setAccessLevel] = useState("");
@@ -762,7 +762,19 @@ export default function App() {
         onClick={() => setMobileSidebarOpen(false)}
       />
 
-      <aside className="sidebar">
+      <aside
+        className="sidebar"
+        onMouseEnter={() => {
+          if (window.innerWidth > 980) {
+            setSidebarCollapsed(false);
+          }
+        }}
+        onMouseLeave={() => {
+          if (window.innerWidth > 980) {
+            setSidebarCollapsed(true);
+          }
+        }}
+      >
         <div className="sidebar-top">
           <div className="sidebar-head premium">
             <LogoImage className="eto-logo-image sidebar-logo-image" />
