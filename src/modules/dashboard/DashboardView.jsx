@@ -159,6 +159,30 @@ function safeDisplay(value, formatter = null) {
   return formatter ? formatter(value) : value;
 }
 
+function normalizeObservationText(value) {
+  const text = String(value || "").trim();
+  const normalized = text.toLowerCase();
+
+  if (!text) return "";
+
+  if (
+    normalized === "n/d" ||
+    normalized === "nd" ||
+    normalized === "n/a" ||
+    normalized === "na" ||
+    normalized === "sin observación" ||
+    normalized === "sin observacion" ||
+    normalized === "ninguna" ||
+    normalized === "none" ||
+    normalized === "null" ||
+    normalized === "-"
+  ) {
+    return "";
+  }
+
+  return text;
+}
+
 function formatDelta(delta, suffix = "") {
   const numeric = Number(delta);
   if (!Number.isFinite(numeric)) return "N/D";
@@ -566,7 +590,7 @@ function buildDailySeriesFromHistory(historyRows, filter) {
       const realValue = getMeasuredValueFromHistoryRow(item);
       const general = normalizeGeneralToPercent(item.general || 0);
       const status = normalizeStatus(item.status);
-      const observation = String(item.observation || "").trim();
+      const observation = normalizeObservationText(item.observation);
 
       return {
         chartIndex: index,
@@ -859,7 +883,7 @@ function ExecutiveIndicatorCard({
     selectedDashboardIndicator
   );
 
-  const currentObservation = String(activePoint?.observation || "").trim();
+  const currentObservation = normalizeObservationText(activePoint?.observation);
   const statusStyles = getStatusPillStyles(currentStatus);
 
   const observationTone =
@@ -1308,44 +1332,282 @@ function ExecutiveIndicatorCard({
         </div>
       </div>
 
-      <div
-        style={{
-          padding: "0 22px 22px",
-        }}
-      >
+      {currentObservation && (
         <div
           style={{
-            borderRadius: 22,
-            padding: "16px 18px",
-            ...observationTone,
-            boxShadow: "0 10px 26px rgba(17,42,74,0.05)",
+            padding: "0 22px 22px",
           }}
         >
           <div
             style={{
-              fontSize: 12,
-              fontWeight: 800,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              marginBottom: 8,
-              opacity: 0.9,
+              borderRadius: 22,
+              padding: "16px 18px",
+              ...observationTone,
+              boxShadow: "0 10px 26px rgba(17,42,74,0.05)",
             }}
           >
-            Bloque abajo · observación
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                marginBottom: 8,
+                opacity: 0.9,
+              }}
+            >
+              Bloque abajo · observación
+            </div>
+
+            <div
+              style={{
+                fontSize: 15,
+                lineHeight: 1.55,
+                fontWeight: 600,
+              }}
+            >
+              {currentObservation}
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+
+function StandardTrendTooltip({
+  active,
+  payload,
+  selectedDashboardIndicator,
+  processDailySeries,
+  processValueAxisLabel,
+}) {
+  if (!active || !payload?.length) return null;
+
+  const activePoint = payload.find((item) => item?.payload)?.payload || null;
+  if (!activePoint) return null;
+
+  const sortedSeries = sortByIsoDateAsc(processDailySeries);
+  const activeIndex = sortedSeries.findIndex(
+    (item) => Number(item.chartIndex) === Number(activePoint.chartIndex)
+  );
+
+  const previousPoint = activeIndex > 0 ? sortedSeries[activeIndex - 1] : null;
+
+  const currentMeasuredValue =
+    activePoint?.originalValue !== null && activePoint?.originalValue !== undefined
+      ? Number(activePoint.originalValue)
+      : null;
+
+  const previousMeasuredValue =
+    previousPoint?.originalValue !== null && previousPoint?.originalValue !== undefined
+      ? Number(previousPoint.originalValue)
+      : null;
+
+  const targetValue =
+    getSafeNumericValue(activePoint?.target_value) ??
+    getSafeNumericValue(selectedDashboardIndicator?.target_value);
+
+  const variationValue = getDirectionalVariation(
+    currentMeasuredValue,
+    previousMeasuredValue,
+    selectedDashboardIndicator
+  );
+
+  const currentObservation = normalizeObservationText(activePoint?.observation);
+
+  const observationTone =
+    normalizeStatus(activePoint?.status) === "critical"
+      ? {
+          background: "#fff6f6",
+          border: "1px solid rgba(226,75,75,0.22)",
+          color: CHART_COLORS.critical,
+        }
+      : normalizeStatus(activePoint?.status) === "warning"
+      ? {
+          background: "#fffaf0",
+          border: "1px solid rgba(244,196,48,0.28)",
+          color: "#946400",
+        }
+      : {
+          background: "#f5fbf8",
+          border: "1px solid rgba(57,169,107,0.20)",
+          color: CHART_COLORS.ok,
+        };
+
+  return (
+    <div
+      style={{
+        background: "#ffffff",
+        border: `1px solid ${CHART_COLORS.cardBorder}`,
+        borderRadius: 20,
+        boxShadow: "0 22px 48px rgba(17,42,74,0.18)",
+        minWidth: 360,
+        maxWidth: 420,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          padding: "16px 18px 14px",
+          background:
+            "linear-gradient(180deg, rgba(238,244,255,0.70) 0%, rgba(255,255,255,1) 100%)",
+          borderBottom: "1px solid #eef3fa",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 900,
+            letterSpacing: "0.09em",
+            textTransform: "uppercase",
+            color: CHART_COLORS.textSoft,
+            marginBottom: 12,
+          }}
+        >
+          Bloque izquierda · info principal
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(135px, 1fr))",
+            gap: 12,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 12,
+                color: CHART_COLORS.textSoft,
+                marginBottom: 5,
+              }}
+            >
+              Fecha seleccionada
+            </div>
+            <div
+              style={{
+                fontSize: 17,
+                fontWeight: 900,
+                color: CHART_COLORS.text,
+              }}
+            >
+              {safeDisplay(activePoint?.rawDate, formatDayMonth)}
+            </div>
           </div>
 
-          <div
-            style={{
-              fontSize: 15,
-              lineHeight: 1.55,
-              fontWeight: 600,
-            }}
-          >
-            {currentObservation || "N/D"}
+          <div>
+            <div
+              style={{
+                fontSize: 12,
+                color: CHART_COLORS.textSoft,
+                marginBottom: 5,
+              }}
+            >
+              Meta
+            </div>
+            <div
+              style={{
+                fontSize: 17,
+                fontWeight: 900,
+                color: CHART_COLORS.text,
+              }}
+            >
+              {targetValue !== null
+                ? `${formatPlainNumber(targetValue)} ${processValueAxisLabel}`
+                : "N/D"}
+            </div>
+          </div>
+
+          <div>
+            <div
+              style={{
+                fontSize: 12,
+                color: CHART_COLORS.textSoft,
+                marginBottom: 5,
+              }}
+            >
+              Valor real
+            </div>
+            <div
+              style={{
+                fontSize: 17,
+                fontWeight: 900,
+                color: CHART_COLORS.text,
+              }}
+            >
+              {currentMeasuredValue !== null
+                ? `${formatPlainNumber(currentMeasuredValue)} ${processValueAxisLabel}`
+                : "N/D"}
+            </div>
+          </div>
+
+          <div>
+            <div
+              style={{
+                fontSize: 12,
+                color: CHART_COLORS.textSoft,
+                marginBottom: 5,
+              }}
+            >
+              Variación vs anterior
+            </div>
+            <div
+              style={{
+                fontSize: 17,
+                fontWeight: 900,
+                color: getVariationColor(variationValue),
+              }}
+            >
+              {variationValue !== null
+                ? `${formatDelta(variationValue)} ${processValueAxisLabel}`
+                : "N/D"}
+            </div>
           </div>
         </div>
       </div>
-    </section>
+
+      {currentObservation && (
+        <div
+          style={{
+            padding: 14,
+            background: "#fbfdff",
+          }}
+        >
+          <div
+            style={{
+              borderRadius: 16,
+              padding: "12px 14px",
+              ...observationTone,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 900,
+                letterSpacing: "0.09em",
+                textTransform: "uppercase",
+                marginBottom: 6,
+                opacity: 0.9,
+              }}
+            >
+              Bloque abajo · observación
+            </div>
+
+            <div
+              style={{
+                fontSize: 14,
+                lineHeight: 1.5,
+                fontWeight: 700,
+              }}
+            >
+              {currentObservation}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1447,6 +1709,19 @@ function renderTrendChart({
                   }
                 : undefined
             }
+          />
+
+          <Tooltip
+            cursor={{ fill: "rgba(19,58,107,0.07)" }}
+            content={({ active, payload }) => (
+              <StandardTrendTooltip
+                active={active}
+                payload={payload}
+                selectedDashboardIndicator={selectedDashboardIndicator}
+                processDailySeries={processDailySeries}
+                processValueAxisLabel={processValueAxisLabel}
+              />
+            )}
           />
 
           {backgroundBands.map((band) => (
@@ -1909,8 +2184,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
           general: normalizeGeneralToPercent(item.general ?? item.value ?? 0),
           status,
           fill: getBarColorByStatus(status),
-          observation: String(item.observation || "").trim(),
-          hasObservation: !!String(item.observation || "").trim(),
+          observation: normalizeObservationText(item.observation),
+          hasObservation: !!normalizeObservationText(item.observation),
           observationMarkerY: Number.isFinite(numericValue) ? numericValue : 0,
         };
       })
