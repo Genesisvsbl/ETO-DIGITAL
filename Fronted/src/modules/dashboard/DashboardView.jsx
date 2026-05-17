@@ -1379,13 +1379,17 @@ function ExecutiveIndicatorCard({
 function StandardTrendTooltip({
   active,
   payload,
+  selectedPoint,
   selectedDashboardIndicator,
   processDailySeries,
   processValueAxisLabel,
 }) {
   if (!active || !payload?.length) return null;
 
-  const activePoint = payload.find((item) => item?.payload)?.payload || null;
+  // IMPORTANTE:
+  // El mensaje debe replicar la misma información del bloque superior.
+  // Por eso NO tomamos la barra del hover, sino la barra seleccionada por click.
+  const activePoint = selectedPoint || null;
   if (!activePoint) return null;
 
   const sortedSeries = sortByIsoDateAsc(processDailySeries);
@@ -1717,6 +1721,11 @@ function renderTrendChart({
               <StandardTrendTooltip
                 active={active}
                 payload={payload}
+                selectedPoint={
+                  selectedTrendIndex >= 0 && selectedTrendIndex < processDailySeries.length
+                    ? processDailySeries[selectedTrendIndex]
+                    : processDailySeries[processDailySeries.length - 1]
+                }
                 selectedDashboardIndicator={selectedDashboardIndicator}
                 processDailySeries={processDailySeries}
                 processValueAxisLabel={processValueAxisLabel}
