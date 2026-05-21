@@ -29,14 +29,14 @@ import {
 } from "../../utils/formatters";
 
 const CHART_COLORS = {
-  navy: "#133a6b",
-  blue: "#2459c3",
-  blueSoft: "#9dbcf5",
-  blueLight: "#eef4ff",
-  grid: "#d7e3f1",
-  text: "#17324d",
-  textSoft: "#5f738a",
-  pending: "#dce7f8",
+  navy: "#064e3b",
+  blue: "#059669",
+  blueSoft: "#86efac",
+  blueLight: "#ecfdf5",
+  grid: "#d9eee4",
+  text: "#0f172a",
+  textSoft: "#64748b",
+  pending: "#d9f2e3",
   white: "#ffffff",
   ok: "#39a96b",
   okSoft: "rgba(57, 169, 107, 0.12)",
@@ -45,13 +45,13 @@ const CHART_COLORS = {
   critical: "#e24b4b",
   criticalSoft: "rgba(226, 75, 75, 0.13)",
   observation: "#6d4cff",
-  target: "#1c4b8f",
-  targetSoft: "rgba(28, 75, 143, 0.10)",
+  target: "#047857",
+  targetSoft: "rgba(5, 150, 105, 0.10)",
   warningArea: "rgba(244, 196, 48, 0.16)",
   criticalArea: "rgba(226, 75, 75, 0.14)",
-  cardBorder: "#e7eef7",
-  cardShadow: "0 16px 40px rgba(17, 42, 74, 0.08)",
-  cardShadowSoft: "0 12px 30px rgba(17, 42, 74, 0.06)",
+  cardBorder: "#dceee6",
+  cardShadow: "0 22px 60px rgba(15, 23, 42, 0.08)",
+  cardShadowSoft: "0 16px 40px rgba(15, 23, 42, 0.06)",
 };
 
 const MONTHS_ES = [
@@ -1863,6 +1863,982 @@ function renderTrendChart({
   );
 }
 
+
+const dashboardWowCss = `
+.dashboard-wow-page {
+  position: relative;
+  min-height: 100%;
+  overflow: auto;
+  padding: clamp(24px, 2.7vw, 42px);
+  color: #0f172a;
+  background:
+    radial-gradient(circle at 96% 2%, rgba(34,197,94,.13), transparent 28%),
+    radial-gradient(circle at 6% 10%, rgba(20,184,166,.08), transparent 26%),
+    linear-gradient(135deg, rgba(255,255,255,.98), rgba(247,252,250,.96));
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34,197,94,.35) rgba(226,232,240,.45);
+}
+
+.dashboard-wow-page::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.dashboard-wow-page::-webkit-scrollbar-track {
+  background: rgba(226,232,240,.50);
+  border-radius: 999px;
+}
+
+.dashboard-wow-page::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(34,197,94,.62), rgba(16,185,129,.42));
+  border-radius: 999px;
+}
+
+.dashboard-wow-page::before {
+  content: "";
+  position: absolute;
+  top: -260px;
+  right: -190px;
+  width: 720px;
+  height: 720px;
+  pointer-events: none;
+  opacity: .52;
+  background:
+    radial-gradient(circle at 58% 40%, rgba(34,197,94,.15) 0 2px, transparent 3px),
+    radial-gradient(circle at 75% 24%, rgba(16,185,129,.16) 0 3px, transparent 4px),
+    radial-gradient(circle at 45% 72%, rgba(20,184,166,.11) 0 5px, transparent 6px),
+    repeating-radial-gradient(circle at 78% 58%, transparent 0 45px, rgba(34,197,94,.14) 46px, transparent 47px);
+  mask-image: radial-gradient(circle, black, transparent 72%);
+}
+
+.dashboard-wow-page::after {
+  content: "";
+  position: absolute;
+  left: -220px;
+  bottom: -260px;
+  width: 640px;
+  height: 640px;
+  pointer-events: none;
+  opacity: .20;
+  background: radial-gradient(circle, rgba(6,78,59,.42), transparent 65%);
+}
+
+.dashboard-wow-page > * {
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard-wow-page .dashboard-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+  margin-bottom: 20px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+}
+
+.dashboard-wow-page .section-kicker {
+  color: #059669;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.dashboard-wow-page .dashboard-header h3 {
+  margin: 8px 0 0;
+  color: #0f172a;
+  font-size: clamp(34px, 3vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -.055em;
+  font-weight: 950;
+}
+
+.dashboard-wow-page .dashboard-header p {
+  margin: 12px 0 0;
+  color: #64748b;
+  font-size: clamp(14px, .95vw, 17px);
+  line-height: 1.45;
+}
+
+.dashboard-wow-page .dashboard-header-badge {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border-radius: 999px;
+  color: #047857;
+  background: rgba(34,197,94,.10);
+  border: 1px solid rgba(34,197,94,.22);
+  box-shadow: 0 12px 28px rgba(34,197,94,.10);
+  font-weight: 950;
+}
+
+.dashboard-wow-page .alert {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  color: #166534;
+  background: rgba(34,197,94,.08);
+  border: 1px solid rgba(34,197,94,.20);
+  font-weight: 850;
+}
+
+.dashboard-wow-page .filters-card {
+  position: relative;
+  overflow: hidden;
+  padding: 24px !important;
+  margin-bottom: 24px;
+  border-radius: 24px !important;
+  border: 1px solid rgba(34,197,94,.20) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34,197,94,.10), transparent 30%),
+    rgba(255,255,255,.94) !important;
+  box-shadow: 0 24px 64px rgba(15,23,42,.08), inset 0 1px 0 rgba(255,255,255,.92) !important;
+}
+
+.dashboard-wow-page .dashboard-filters {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.25fr) minmax(260px, 1.7fr) repeat(4, minmax(120px, .75fr)) minmax(130px, .78fr);
+  gap: 16px;
+  align-items: end;
+}
+
+.dashboard-wow-page .field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dashboard-wow-page .field label {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+}
+
+.dashboard-wow-page .field input,
+.dashboard-wow-page .field select {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 13px;
+  border: 1px solid #dbe8e2;
+  background: rgba(255,255,255,.95);
+  color: #0f172a;
+  outline: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.85);
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease, transform .18s ease;
+}
+
+.dashboard-wow-page .field input:focus,
+.dashboard-wow-page .field select:focus {
+  border-color: rgba(34,197,94,.62);
+  box-shadow: 0 0 0 4px rgba(34,197,94,.13);
+  background: #fff;
+}
+
+.dashboard-wow-page .field input:disabled,
+.dashboard-wow-page .field select:disabled {
+  color: #94a3b8;
+  background: #f1f5f9;
+  cursor: not-allowed;
+}
+
+.dashboard-wow-page .primary,
+.dashboard-wow-page .secondary,
+.dashboard-wow-page button {
+  font-family: inherit;
+}
+
+.dashboard-wow-page .primary {
+  height: 46px;
+  min-width: 185px;
+  border: 0;
+  border-radius: 14px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 950;
+  background:
+    linear-gradient(135deg, #047857, #16a34a 55%, #22c55e);
+  box-shadow: 0 16px 34px rgba(34,197,94,.30);
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+
+.dashboard-wow-page .primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 20px 42px rgba(34,197,94,.36);
+}
+
+.dashboard-wow-page .primary:disabled {
+  opacity: .62;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.dashboard-wow-page .secondary {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 13px;
+  border: 1px solid rgba(34,197,94,.20);
+  color: #047857;
+  background: rgba(34,197,94,.07);
+  cursor: pointer;
+  font-weight: 900;
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.dashboard-wow-page .secondary:hover {
+  transform: translateY(-1px);
+  background: rgba(34,197,94,.11);
+  box-shadow: 0 10px 24px rgba(34,197,94,.14);
+}
+
+.dashboard-wow-page .process-focus-banner {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  justify-content: space-between;
+  gap: 22px;
+  align-items: center;
+  margin: 0 0 18px;
+  padding: 24px;
+  border-radius: 24px;
+  border: 1px solid rgba(34,197,94,.18);
+  background:
+    radial-gradient(circle at 98% 15%, rgba(34,197,94,.14), transparent 34%),
+    linear-gradient(135deg, rgba(255,255,255,.96), rgba(240,253,244,.85));
+  box-shadow: 0 20px 52px rgba(15,23,42,.07);
+}
+
+.dashboard-wow-page .process-focus-banner h2 {
+  margin: 6px 0 0;
+  color: #0f172a;
+  font-size: clamp(26px, 2.1vw, 40px);
+  line-height: 1.05;
+  letter-spacing: -.045em;
+  font-weight: 950;
+}
+
+.dashboard-wow-page .process-focus-banner p {
+  margin: 8px 0 0;
+  color: #64748b;
+}
+
+.dashboard-wow-page .focus-banner-side {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.dashboard-wow-page .status-pill {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: #047857;
+  background: rgba(34,197,94,.09);
+  border: 1px solid rgba(34,197,94,.20);
+  font-weight: 900;
+}
+
+.dashboard-wow-page .status-pill.dark {
+  color: #064e3b;
+  background: rgba(6,78,59,.08);
+  border-color: rgba(6,78,59,.14);
+}
+
+.dashboard-wow-page .executive-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0 0 18px;
+}
+
+.dashboard-wow-page .executive-kpi {
+  position: relative;
+  overflow: hidden;
+  min-height: 122px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(226,232,240,.94);
+  background: rgba(255,255,255,.92);
+  box-shadow: 0 18px 42px rgba(15,23,42,.07);
+}
+
+.dashboard-wow-page .executive-kpi::after {
+  content: "";
+  position: absolute;
+  right: -30px;
+  top: -30px;
+  width: 110px;
+  height: 110px;
+  border-radius: 999px;
+  background: rgba(34,197,94,.10);
+}
+
+.dashboard-wow-page .executive-kpi span {
+  position: relative;
+  z-index: 1;
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.dashboard-wow-page .executive-kpi strong {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-top: 9px;
+  color: #059669;
+  font-size: clamp(24px, 2vw, 34px);
+  line-height: 1;
+  font-weight: 950;
+}
+
+.dashboard-wow-page .executive-kpi small {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-top: 11px;
+  color: #64748b;
+  line-height: 1.3;
+  font-size: 12px;
+}
+
+.dashboard-wow-page .blue-main {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34,197,94,.18), transparent 38%),
+    linear-gradient(135deg, rgba(255,255,255,.96), rgba(236,253,245,.92));
+  border-color: rgba(34,197,94,.20);
+}
+
+.dashboard-wow-page .chart-card,
+.dashboard-wow-page .panel-block,
+.dashboard-wow-page .executive-section,
+.dashboard-wow-page .dashboard-process-panel {
+  border-radius: 24px !important;
+  border: 1px solid rgba(226,232,240,.94) !important;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.96), rgba(255,255,255,.88)) !important;
+  box-shadow: 0 22px 60px rgba(15,23,42,.08), inset 0 1px 0 rgba(255,255,255,.92) !important;
+}
+
+.dashboard-wow-page .chart-card,
+.dashboard-wow-page .executive-section,
+.dashboard-wow-page .dashboard-process-panel {
+  padding: 22px;
+}
+
+.dashboard-wow-page .dashboard-process-grid,
+.dashboard-wow-page .dashboard-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.dashboard-wow-page .premium-process-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr);
+}
+
+.dashboard-wow-page .full-span {
+  grid-column: 1 / -1;
+}
+
+.dashboard-wow-page .subsection-title {
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 950;
+  letter-spacing: -.01em;
+  margin-bottom: 14px;
+}
+
+.dashboard-wow-page .chart-container {
+  width: 100%;
+  min-height: 300px;
+}
+
+.dashboard-wow-page .executive-chart {
+  height: 340px;
+}
+
+.dashboard-wow-page .large-executive-chart {
+  height: 380px;
+}
+
+.dashboard-wow-page .indicator-summary-grid,
+.dashboard-wow-page .indicator-trend-grid,
+.dashboard-wow-page .process-overview-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.dashboard-wow-page .indicator-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+}
+
+.dashboard-wow-page .indicator-trend-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.dashboard-wow-page .process-overview-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.dashboard-wow-page .indicator-summary-card,
+.dashboard-wow-page .indicator-trend-card,
+.dashboard-wow-page .process-card {
+  padding: 18px;
+}
+
+.dashboard-wow-page .indicator-card-head,
+.dashboard-wow-page .indicator-trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.dashboard-wow-page .indicator-code {
+  color: #059669;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+
+.dashboard-wow-page .indicator-name {
+  margin-top: 5px;
+  color: #0f172a;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.dashboard-wow-page .indicator-main-value {
+  margin-top: 16px;
+  color: #059669;
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.dashboard-wow-page .indicator-main-value.small {
+  font-size: 26px;
+}
+
+.dashboard-wow-page .indicator-rules {
+  display: grid;
+  gap: 7px;
+  margin-top: 16px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.dashboard-wow-page .indicator-rules strong {
+  color: #0f172a;
+}
+
+.dashboard-wow-page .mini-chart {
+  height: 95px;
+  margin-top: 12px;
+}
+
+.dashboard-wow-page .trend-badge {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: #047857;
+  background: rgba(34,197,94,.10);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.dashboard-wow-page .trend-badge.down {
+  color: #dc2626;
+  background: rgba(239,68,68,.10);
+}
+
+.dashboard-wow-page .trend-badge.stable {
+  color: #b45309;
+  background: rgba(245,158,11,.12);
+}
+
+.dashboard-wow-page .process-rank-chip {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #047857;
+  background: rgba(34,197,94,.10);
+  font-weight: 950;
+}
+
+.dashboard-wow-page .process-card-title {
+  margin-top: 12px;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.dashboard-wow-page .process-card-value {
+  margin-top: 10px;
+  color: #059669;
+  font-size: 30px;
+  font-weight: 950;
+}
+
+.dashboard-wow-page .table-wrap {
+  overflow: auto;
+  border-radius: 18px;
+  border: 1px solid #e2e8f0;
+  background: rgba(255,255,255,.72);
+}
+
+.dashboard-wow-page table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dashboard-wow-page th {
+  height: 52px;
+  padding: 0 16px;
+  color: #059669;
+  background: rgba(248,250,252,.96);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dashboard-wow-page td {
+  height: 56px;
+  padding: 0 16px;
+  color: #1e293b;
+  border-bottom: 1px solid #e5eaf1;
+}
+
+.dashboard-wow-page tr:hover td {
+  background: rgba(34,197,94,.035);
+}
+
+.dashboard-wow-page .empty {
+  height: 120px;
+  text-align: center;
+  color: #94a3b8;
+  font-weight: 850;
+}
+
+.dashboard-wow-page .status.ok {
+  color: #047857;
+  background: rgba(34,197,94,.11);
+}
+
+.dashboard-wow-page .status.warning {
+  color: #b45309;
+  background: rgba(245,158,11,.12);
+}
+
+.dashboard-wow-page .status.critical {
+  color: #dc2626;
+  background: rgba(239,68,68,.10);
+}
+
+.dashboard-wow-page .recharts-wrapper text {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+}
+
+.dashboard-wow-page .recharts-cartesian-grid line {
+  stroke: #dbeee4;
+}
+
+@media (max-width: 1500px) {
+  .dashboard-wow-page .dashboard-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .dashboard-wow-page .executive-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1180px) {
+  .dashboard-wow-page {
+    padding: 24px;
+  }
+
+  .dashboard-wow-page .dashboard-header,
+  .dashboard-wow-page .process-focus-banner {
+    flex-direction: column;
+  }
+
+  .dashboard-wow-page .dashboard-filters,
+  .dashboard-wow-page .dashboard-process-grid,
+  .dashboard-wow-page .dashboard-overview-grid,
+  .dashboard-wow-page .premium-process-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-wow-page .executive-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-wow-page .chart-container,
+  .dashboard-wow-page .executive-chart,
+  .dashboard-wow-page .large-executive-chart {
+    min-height: 320px;
+    height: 340px;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-wow-page {
+    padding: 18px;
+  }
+
+  .dashboard-wow-page .dashboard-header h3 {
+    font-size: 32px;
+  }
+
+  .dashboard-wow-page .filters-card,
+  .dashboard-wow-page .chart-card,
+  .dashboard-wow-page .panel-block,
+  .dashboard-wow-page .executive-section,
+  .dashboard-wow-page .dashboard-process-panel {
+    border-radius: 18px !important;
+    padding: 18px !important;
+  }
+
+  .dashboard-wow-page .executive-kpi-grid,
+  .dashboard-wow-page .indicator-summary-grid,
+  .dashboard-wow-page .indicator-trend-grid,
+  .dashboard-wow-page .process-overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ============================================================
+   ETO DASHBOARD WOW FINAL - overrides visuales
+   ============================================================ */
+
+.dashboard-wow-page {
+  padding: clamp(24px, 2.2vw, 38px) !important;
+  background:
+    radial-gradient(circle at 98% 0%, rgba(34,197,94,.16), transparent 30%),
+    radial-gradient(circle at 0% 12%, rgba(5,150,105,.09), transparent 28%),
+    linear-gradient(135deg, #ffffff 0%, #f8fbff 44%, #f2fbf7 100%) !important;
+}
+
+.dashboard-wow-page::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .34;
+  background:
+    linear-gradient(115deg, transparent 0 58%, rgba(34,197,94,.06) 58.4%, transparent 59%),
+    radial-gradient(circle at 88% 28%, rgba(34,197,94,.09) 0 2px, transparent 3px),
+    radial-gradient(circle at 92% 36%, rgba(34,197,94,.12) 0 3px, transparent 4px),
+    radial-gradient(circle at 80% 20%, rgba(34,197,94,.08) 0 2px, transparent 3px);
+}
+
+.dashboard-wow-page .dashboard-header {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 18px;
+  padding: 4px 2px 2px;
+}
+
+.dashboard-wow-page .dashboard-header h3 {
+  font-size: clamp(34px, 2.7vw, 50px) !important;
+  line-height: .98 !important;
+  letter-spacing: -.055em !important;
+}
+
+.dashboard-wow-page .dashboard-header p {
+  max-width: 760px;
+  font-size: 15px !important;
+  color: #64748b !important;
+}
+
+.dashboard-wow-page .dashboard-header-badge {
+  height: 38px;
+  padding: 0 18px !important;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px !important;
+  color: #047857 !important;
+  border: 1px solid rgba(34,197,94,.24) !important;
+  background:
+    radial-gradient(circle at 30% 0%, rgba(34,197,94,.18), transparent 52%),
+    rgba(255,255,255,.88) !important;
+  box-shadow: 0 14px 32px rgba(15,23,42,.07) !important;
+}
+
+.dashboard-wow-page .filters-card {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 22px !important;
+  padding: 22px !important;
+  border-color: rgba(34,197,94,.18) !important;
+  background:
+    radial-gradient(circle at 98% 0%, rgba(34,197,94,.10), transparent 30%),
+    rgba(255,255,255,.92) !important;
+  box-shadow:
+    0 22px 60px rgba(15,23,42,.08),
+    inset 0 1px 0 rgba(255,255,255,.90) !important;
+  backdrop-filter: blur(12px);
+}
+
+.dashboard-wow-page .dashboard-filters {
+  display: grid !important;
+  grid-template-columns: 1.08fr 1.35fr .62fr .62fr .62fr .72fr .72fr 1fr;
+  gap: 14px !important;
+  align-items: end !important;
+}
+
+.dashboard-wow-page .field label {
+  color: #64748b !important;
+  font-size: 11px !important;
+  font-weight: 950 !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+}
+
+.dashboard-wow-page .field input,
+.dashboard-wow-page .field select {
+  min-height: 44px !important;
+  border-radius: 13px !important;
+  border: 1px solid #dbe7f2 !important;
+  background: rgba(255,255,255,.90) !important;
+  color: #0f172a !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.86) !important;
+}
+
+.dashboard-wow-page .field input:focus,
+.dashboard-wow-page .field select:focus {
+  border-color: rgba(34,197,94,.55) !important;
+  box-shadow: 0 0 0 4px rgba(34,197,94,.12) !important;
+}
+
+.dashboard-wow-page .primary {
+  min-height: 46px !important;
+  border-radius: 14px !important;
+  color: #fff !important;
+  background:
+    radial-gradient(circle at 28% 10%, rgba(255,255,255,.24), transparent 28%),
+    linear-gradient(135deg, #047857 0%, #059669 45%, #22c55e 100%) !important;
+  border: 0 !important;
+  box-shadow: 0 16px 34px rgba(34,197,94,.29) !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-wow-page .secondary {
+  border-radius: 14px !important;
+  border: 1px solid rgba(34,197,94,.18) !important;
+  color: #047857 !important;
+  background: rgba(34,197,94,.07) !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-wow-page .process-focus-banner {
+  position: relative;
+  z-index: 1;
+  border-radius: 24px !important;
+  border: 1px solid rgba(34,197,94,.20) !important;
+  background:
+    radial-gradient(circle at 94% 4%, rgba(34,197,94,.14), transparent 33%),
+    linear-gradient(135deg, rgba(255,255,255,.96), rgba(240,253,244,.62)) !important;
+  box-shadow: 0 20px 48px rgba(15,23,42,.07), inset 0 1px 0 rgba(255,255,255,.92) !important;
+}
+
+.dashboard-wow-page .process-focus-banner h2 {
+  font-size: clamp(30px, 2.5vw, 44px) !important;
+  letter-spacing: -.055em !important;
+}
+
+.dashboard-wow-page .status-pill {
+  color: #047857 !important;
+  background: rgba(34,197,94,.09) !important;
+  border: 1px solid rgba(34,197,94,.22) !important;
+  box-shadow: 0 10px 24px rgba(34,197,94,.08) !important;
+}
+
+.dashboard-wow-page .status-pill.dark {
+  color: #064e3b !important;
+  background: rgba(236,253,245,.80) !important;
+}
+
+.dashboard-wow-page .clean-kpis {
+  position: relative;
+  z-index: 1;
+  gap: 14px !important;
+}
+
+.dashboard-wow-page .executive-kpi {
+  min-height: 112px !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(226,232,240,.96) !important;
+  background:
+    radial-gradient(circle at 96% 6%, rgba(34,197,94,.12), transparent 34%),
+    rgba(255,255,255,.94) !important;
+  box-shadow: 0 18px 42px rgba(15,23,42,.075) !important;
+}
+
+.dashboard-wow-page .executive-kpi::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 16px;
+  bottom: 16px;
+  width: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #059669, #22c55e);
+}
+
+.dashboard-wow-page .executive-kpi span {
+  color: #64748b !important;
+  font-size: 11px !important;
+  letter-spacing: .08em !important;
+}
+
+.dashboard-wow-page .executive-kpi strong {
+  color: #047857 !important;
+  font-size: clamp(27px, 2vw, 36px) !important;
+  letter-spacing: -.04em !important;
+}
+
+.dashboard-wow-page .executive-kpi small {
+  color: #64748b !important;
+}
+
+.dashboard-wow-page .premium-chart-card,
+.dashboard-wow-page .panel-block,
+.dashboard-wow-page .executive-section {
+  position: relative;
+  z-index: 1;
+  border-radius: 24px !important;
+  border: 1px solid rgba(226,232,240,.96) !important;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.98), rgba(255,255,255,.92)) !important;
+  box-shadow:
+    0 22px 54px rgba(15,23,42,.08),
+    inset 0 1px 0 rgba(255,255,255,.92) !important;
+}
+
+.dashboard-wow-page .full-span {
+  grid-column: 1 / -1;
+}
+
+.dashboard-wow-page .dashboard-process-grid,
+.dashboard-wow-page .premium-process-grid {
+  position: relative;
+  z-index: 1;
+  grid-template-columns: minmax(0, 1.45fr) minmax(360px, .55fr) !important;
+  gap: 18px !important;
+}
+
+.dashboard-wow-page .premium-process-grid .premium-chart-card:first-child {
+  min-height: 390px;
+}
+
+.dashboard-wow-page .subsection-title {
+  color: #0f172a !important;
+  font-size: 15px !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-wow-page .chart-container {
+  min-height: 330px !important;
+}
+
+.dashboard-wow-page .executive-chart {
+  min-height: 330px !important;
+}
+
+.dashboard-wow-page .donut-card .chart-container {
+  min-height: 330px !important;
+}
+
+.dashboard-wow-page .indicator-summary-grid,
+.dashboard-wow-page .indicator-trend-grid {
+  gap: 16px !important;
+}
+
+.dashboard-wow-page .clean-indicator-card,
+.dashboard-wow-page .clean-trend-card {
+  overflow: hidden;
+  border-radius: 22px !important;
+  border: 1px solid rgba(226,232,240,.96) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34,197,94,.10), transparent 30%),
+    rgba(255,255,255,.96) !important;
+}
+
+.dashboard-wow-page .indicator-main-value {
+  color: #047857 !important;
+}
+
+.dashboard-wow-page .trend-badge {
+  border: 1px solid rgba(34,197,94,.18) !important;
+  background: rgba(34,197,94,.08) !important;
+  color: #047857 !important;
+}
+
+.dashboard-wow-page .dashboard-overview-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr) !important;
+}
+
+@media (max-width: 1500px) {
+  .dashboard-wow-page .dashboard-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  .dashboard-wow-page .dashboard-filters,
+  .dashboard-wow-page .dashboard-process-grid,
+  .dashboard-wow-page .premium-process-grid,
+  .dashboard-wow-page .dashboard-overview-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-wow-page .executive-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-wow-page {
+    padding: 18px !important;
+  }
+
+  .dashboard-wow-page .executive-kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-wow-page .dashboard-header,
+  .dashboard-wow-page .process-focus-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+`;
+
 export default function DashboardView({ accessLevel, processes, indicators }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -2099,22 +3075,6 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     historySummary,
     isStandardIndicatorSelected,
   ]);
-
-  const dashboardBarData = useMemo(() => {
-    if (!dashboardData?.indicator_cards?.length) return [];
-
-    return dashboardData.indicator_cards
-      .map((item) => ({
-        name: formatCompactName(item.code, 16),
-        fullName: `${item.code} - ${item.name}`,
-        general: Number(item.general || 0),
-        status: normalizeStatus(item.status),
-        fill: getBarColorByStatus(item.status),
-      }))
-      .filter((item) =>
-        isMatchingStatusFilter(item.status, dashboardFilter.status_filter)
-      );
-  }, [dashboardData, dashboardFilter.status_filter]);
 
   const globalRankingData = useMemo(() => {
     return (dashboardOverview?.process_ranking || [])
@@ -2360,14 +3320,15 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
   }, [dashboardData, entityDashboardBarData, dashboardFilter.status_filter]);
 
   return (
-    <section className="content-card dashboard-master-card">
+    <section className="dashboard-wow-page dashboard-master-card">
+      <style>{dashboardWowCss}</style>
       <div className="card-header-block dashboard-header">
         <div>
           <div className="section-kicker">ANALÍTICA EJECUTIVA</div>
           <h3>Dashboard corporativo</h3>
           <p>
             Vista global por procesos o análisis detallado por proceso con
-            tendencia, comparativos y Pareto.
+            tendencia y distribución ejecutiva.
           </p>
         </div>
         <div className="dashboard-header-badge">Nivel {accessLevel}</div>
@@ -3047,8 +4008,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   <div className="section-kicker">PROCESO SELECCIONADO</div>
                   <h2>{safeDisplay(dashboardData?.process?.name)}</h2>
                   <p>
-                    Lectura ejecutiva del proceso con tendencia, comparativos y
-                    foco de impacto.
+                    Lectura ejecutiva del proceso con tendencia, distribución y
+                    foco operativo.
                   </p>
                 </div>
                 <div className="focus-banner-side">
@@ -3205,157 +4166,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   </div>
                 </section>
 
-                <section
-                  className="chart-card premium-chart-card full-span"
-                  style={{
-                    borderRadius: 24,
-                    border: `1px solid ${CHART_COLORS.cardBorder}`,
-                    boxShadow: CHART_COLORS.cardShadow,
-                    background: "#ffffff",
-                  }}
-                >
-                  <div className="subsection-title">Comparativo de indicadores</div>
-                  <div className="chart-container large-executive-chart">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={dashboardBarData}
-                        margin={{ top: 18, right: 18, left: 10, bottom: 50 }}
-                      >
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke={CHART_COLORS.grid}
-                        />
-                        <XAxis
-                          dataKey="name"
-                          interval={0}
-                          angle={-20}
-                          textAnchor="end"
-                          height={60}
-                        />
-                        <YAxis tickFormatter={(value) => `${value}%`} />
-                        <Tooltip
-                          formatter={(value) => formatPercent(value)}
-                          labelFormatter={(label, payload) =>
-                            payload?.[0]?.payload?.fullName || label
-                          }
-                        />
-                        <Bar
-                          dataKey="general"
-                          name="Resultado"
-                          radius={[10, 10, 0, 0]}
-                        >
-                          {dashboardBarData.map((entry, index) => (
-                            <Cell key={`indicator-bar-${index}`} fill={entry.fill} />
-                          ))}
-                          <LabelList
-                            dataKey="general"
-                            position="top"
-                            formatter={(value) => formatPercent(value)}
-                            style={{
-                              fill: CHART_COLORS.text,
-                              fontWeight: 800,
-                              fontSize: 11,
-                            }}
-                          />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </section>
 
-                <section
-                  className="chart-card premium-chart-card full-span"
-                  style={{
-                    borderRadius: 24,
-                    border: `1px solid ${CHART_COLORS.cardBorder}`,
-                    boxShadow: CHART_COLORS.cardShadow,
-                    background: "#ffffff",
-                  }}
-                >
-                  <div className="subsection-title">Pareto de impacto</div>
-                  <div className="chart-container large-executive-chart">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart
-                        data={(dashboardData.pareto || []).map((item) => ({
-                          ...item,
-                          shortName: formatCompactName(item.name, 24),
-                        }))}
-                        margin={{ top: 18, right: 18, left: 10, bottom: 50 }}
-                      >
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke={CHART_COLORS.grid}
-                        />
-                        <XAxis
-                          dataKey="shortName"
-                          interval={0}
-                          angle={-20}
-                          textAnchor="end"
-                          height={60}
-                        />
-                        <YAxis yAxisId="left" />
-                        <YAxis
-                          yAxisId="right"
-                          orientation="right"
-                          domain={[0, 100]}
-                          tickFormatter={(value) => `${value}%`}
-                        />
-                        <Tooltip
-                          formatter={(value, name) => {
-                            if (name === "% Acumulado") {
-                              return `${Number(value).toFixed(1)}%`;
-                            }
-                            return formatPlainNumber(value);
-                          }}
-                          labelFormatter={(label, payload) =>
-                            payload?.[0]?.payload?.name || label
-                          }
-                        />
-                        <Bar
-                          yAxisId="left"
-                          dataKey="value"
-                          name="Impacto"
-                          fill={CHART_COLORS.blue}
-                          radius={[8, 8, 0, 0]}
-                        >
-                          <LabelList
-                            dataKey="value"
-                            position="top"
-                            formatter={(value) => formatPlainNumber(value)}
-                            style={{
-                              fill: CHART_COLORS.text,
-                              fontWeight: 800,
-                              fontSize: 11,
-                            }}
-                          />
-                        </Bar>
 
-                        <Line
-                          yAxisId="right"
-                          type="monotone"
-                          dataKey="cumulative"
-                          name="% Acumulado"
-                          stroke={CHART_COLORS.navy}
-                          strokeWidth={3}
-                          dot={{ r: 4, fill: CHART_COLORS.navy }}
-                        >
-                          <LabelList
-                            dataKey="cumulative"
-                            position="top"
-                            formatter={(value) =>
-                              `${Number(value).toFixed(1)}%`
-                            }
-                            style={{
-                              fill: CHART_COLORS.text,
-                              fontWeight: 800,
-                              fontSize: 11,
-                            }}
-                          />
-                        </Line>
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
-                </section>
               </div>
 
               <section className="executive-section">

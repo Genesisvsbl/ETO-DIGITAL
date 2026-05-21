@@ -1,5 +1,10 @@
 const API_URL =
-  import.meta.env.VITE_API_URL || "https://eto-digital.onrender.com";
+  import.meta.env.VITE_ETO_API_URL ||
+  import.meta.env.VITE_API_URL ||
+  (window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1"
+    ? "http://127.0.0.1:8001"
+    : "https://eto-digital.onrender.com");
 
 async function request(path, options = {}) {
   const url = `${API_URL}${path}`;
@@ -537,4 +542,5 @@ const API = {
     }),
 };
 
+export { API_URL };
 export default API;

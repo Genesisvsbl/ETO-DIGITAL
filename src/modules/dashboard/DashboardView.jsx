@@ -29,14 +29,14 @@ import {
 } from "../../utils/formatters";
 
 const CHART_COLORS = {
-  navy: "#133a6b",
-  blue: "#2459c3",
-  blueSoft: "#9dbcf5",
-  blueLight: "#eef4ff",
-  grid: "#d7e3f1",
-  text: "#17324d",
-  textSoft: "#5f738a",
-  pending: "#dce7f8",
+  navy: "#064e3b",
+  blue: "#059669",
+  blueSoft: "#86efac",
+  blueLight: "#ecfdf5",
+  grid: "#d9eee4",
+  text: "#0f172a",
+  textSoft: "#64748b",
+  pending: "#d9f2e3",
   white: "#ffffff",
   ok: "#39a96b",
   okSoft: "rgba(57, 169, 107, 0.12)",
@@ -45,13 +45,13 @@ const CHART_COLORS = {
   critical: "#e24b4b",
   criticalSoft: "rgba(226, 75, 75, 0.13)",
   observation: "#6d4cff",
-  target: "#1c4b8f",
-  targetSoft: "rgba(28, 75, 143, 0.10)",
+  target: "#047857",
+  targetSoft: "rgba(5, 150, 105, 0.10)",
   warningArea: "rgba(244, 196, 48, 0.16)",
   criticalArea: "rgba(226, 75, 75, 0.14)",
-  cardBorder: "#e7eef7",
-  cardShadow: "0 16px 40px rgba(17, 42, 74, 0.08)",
-  cardShadowSoft: "0 12px 30px rgba(17, 42, 74, 0.06)",
+  cardBorder: "#dceee6",
+  cardShadow: "0 22px 60px rgba(15, 23, 42, 0.08)",
+  cardShadowSoft: "0 16px 40px rgba(15, 23, 42, 0.06)",
 };
 
 const MONTHS_ES = [
@@ -1863,6 +1863,1693 @@ function renderTrendChart({
   );
 }
 
+
+const dashboardWowCss = `
+.dashboard-wow-page {
+  position: relative;
+  min-height: 100%;
+  overflow: auto;
+  padding: clamp(24px, 2.7vw, 42px);
+  color: #0f172a;
+  background:
+    radial-gradient(circle at 96% 2%, rgba(34,197,94,.13), transparent 28%),
+    radial-gradient(circle at 6% 10%, rgba(20,184,166,.08), transparent 26%),
+    linear-gradient(135deg, rgba(255,255,255,.98), rgba(247,252,250,.96));
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34,197,94,.35) rgba(226,232,240,.45);
+}
+
+.dashboard-wow-page::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.dashboard-wow-page::-webkit-scrollbar-track {
+  background: rgba(226,232,240,.50);
+  border-radius: 999px;
+}
+
+.dashboard-wow-page::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(34,197,94,.62), rgba(16,185,129,.42));
+  border-radius: 999px;
+}
+
+.dashboard-wow-page::before {
+  content: "";
+  position: absolute;
+  top: -260px;
+  right: -190px;
+  width: 720px;
+  height: 720px;
+  pointer-events: none;
+  opacity: .52;
+  background:
+    radial-gradient(circle at 58% 40%, rgba(34,197,94,.15) 0 2px, transparent 3px),
+    radial-gradient(circle at 75% 24%, rgba(16,185,129,.16) 0 3px, transparent 4px),
+    radial-gradient(circle at 45% 72%, rgba(20,184,166,.11) 0 5px, transparent 6px),
+    repeating-radial-gradient(circle at 78% 58%, transparent 0 45px, rgba(34,197,94,.14) 46px, transparent 47px);
+  mask-image: radial-gradient(circle, black, transparent 72%);
+}
+
+.dashboard-wow-page::after {
+  content: "";
+  position: absolute;
+  left: -220px;
+  bottom: -260px;
+  width: 640px;
+  height: 640px;
+  pointer-events: none;
+  opacity: .20;
+  background: radial-gradient(circle, rgba(6,78,59,.42), transparent 65%);
+}
+
+.dashboard-wow-page > * {
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard-wow-page .dashboard-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+  margin-bottom: 20px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+}
+
+.dashboard-wow-page .section-kicker {
+  color: #059669;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.dashboard-wow-page .dashboard-header h3 {
+  margin: 8px 0 0;
+  color: #0f172a;
+  font-size: clamp(34px, 3vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -.055em;
+  font-weight: 950;
+}
+
+.dashboard-wow-page .dashboard-header p {
+  margin: 12px 0 0;
+  color: #64748b;
+  font-size: clamp(14px, .95vw, 17px);
+  line-height: 1.45;
+}
+
+.dashboard-wow-page .dashboard-header-badge {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border-radius: 999px;
+  color: #047857;
+  background: rgba(34,197,94,.10);
+  border: 1px solid rgba(34,197,94,.22);
+  box-shadow: 0 12px 28px rgba(34,197,94,.10);
+  font-weight: 950;
+}
+
+.dashboard-wow-page .alert {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  color: #166534;
+  background: rgba(34,197,94,.08);
+  border: 1px solid rgba(34,197,94,.20);
+  font-weight: 850;
+}
+
+.dashboard-wow-page .filters-card {
+  position: relative;
+  overflow: hidden;
+  padding: 24px !important;
+  margin-bottom: 24px;
+  border-radius: 24px !important;
+  border: 1px solid rgba(34,197,94,.20) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34,197,94,.10), transparent 30%),
+    rgba(255,255,255,.94) !important;
+  box-shadow: 0 24px 64px rgba(15,23,42,.08), inset 0 1px 0 rgba(255,255,255,.92) !important;
+}
+
+.dashboard-wow-page .dashboard-filters {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.25fr) minmax(260px, 1.7fr) repeat(4, minmax(120px, .75fr)) minmax(130px, .78fr);
+  gap: 16px;
+  align-items: end;
+}
+
+.dashboard-wow-page .field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dashboard-wow-page .field label {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+}
+
+.dashboard-wow-page .field input,
+.dashboard-wow-page .field select {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 13px;
+  border: 1px solid #dbe8e2;
+  background: rgba(255,255,255,.95);
+  color: #0f172a;
+  outline: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.85);
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease, transform .18s ease;
+}
+
+.dashboard-wow-page .field input:focus,
+.dashboard-wow-page .field select:focus {
+  border-color: rgba(34,197,94,.62);
+  box-shadow: 0 0 0 4px rgba(34,197,94,.13);
+  background: #fff;
+}
+
+.dashboard-wow-page .field input:disabled,
+.dashboard-wow-page .field select:disabled {
+  color: #94a3b8;
+  background: #f1f5f9;
+  cursor: not-allowed;
+}
+
+.dashboard-wow-page .primary,
+.dashboard-wow-page .secondary,
+.dashboard-wow-page button {
+  font-family: inherit;
+}
+
+.dashboard-wow-page .primary {
+  height: 46px;
+  min-width: 185px;
+  border: 0;
+  border-radius: 14px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 950;
+  background:
+    linear-gradient(135deg, #047857, #16a34a 55%, #22c55e);
+  box-shadow: 0 16px 34px rgba(34,197,94,.30);
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+
+.dashboard-wow-page .primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 20px 42px rgba(34,197,94,.36);
+}
+
+.dashboard-wow-page .primary:disabled {
+  opacity: .62;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.dashboard-wow-page .secondary {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 13px;
+  border: 1px solid rgba(34,197,94,.20);
+  color: #047857;
+  background: rgba(34,197,94,.07);
+  cursor: pointer;
+  font-weight: 900;
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.dashboard-wow-page .secondary:hover {
+  transform: translateY(-1px);
+  background: rgba(34,197,94,.11);
+  box-shadow: 0 10px 24px rgba(34,197,94,.14);
+}
+
+.dashboard-wow-page .process-focus-banner {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  justify-content: space-between;
+  gap: 22px;
+  align-items: center;
+  margin: 0 0 18px;
+  padding: 24px;
+  border-radius: 24px;
+  border: 1px solid rgba(34,197,94,.18);
+  background:
+    radial-gradient(circle at 98% 15%, rgba(34,197,94,.14), transparent 34%),
+    linear-gradient(135deg, rgba(255,255,255,.96), rgba(240,253,244,.85));
+  box-shadow: 0 20px 52px rgba(15,23,42,.07);
+}
+
+.dashboard-wow-page .process-focus-banner h2 {
+  margin: 6px 0 0;
+  color: #0f172a;
+  font-size: clamp(26px, 2.1vw, 40px);
+  line-height: 1.05;
+  letter-spacing: -.045em;
+  font-weight: 950;
+}
+
+.dashboard-wow-page .process-focus-banner p {
+  margin: 8px 0 0;
+  color: #64748b;
+}
+
+.dashboard-wow-page .focus-banner-side {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.dashboard-wow-page .status-pill {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: #047857;
+  background: rgba(34,197,94,.09);
+  border: 1px solid rgba(34,197,94,.20);
+  font-weight: 900;
+}
+
+.dashboard-wow-page .status-pill.dark {
+  color: #064e3b;
+  background: rgba(6,78,59,.08);
+  border-color: rgba(6,78,59,.14);
+}
+
+.dashboard-wow-page .executive-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0 0 18px;
+}
+
+.dashboard-wow-page .executive-kpi {
+  position: relative;
+  overflow: hidden;
+  min-height: 122px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(226,232,240,.94);
+  background: rgba(255,255,255,.92);
+  box-shadow: 0 18px 42px rgba(15,23,42,.07);
+}
+
+.dashboard-wow-page .executive-kpi::after {
+  content: "";
+  position: absolute;
+  right: -30px;
+  top: -30px;
+  width: 110px;
+  height: 110px;
+  border-radius: 999px;
+  background: rgba(34,197,94,.10);
+}
+
+.dashboard-wow-page .executive-kpi span {
+  position: relative;
+  z-index: 1;
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.dashboard-wow-page .executive-kpi strong {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-top: 9px;
+  color: #059669;
+  font-size: clamp(24px, 2vw, 34px);
+  line-height: 1;
+  font-weight: 950;
+}
+
+.dashboard-wow-page .executive-kpi small {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-top: 11px;
+  color: #64748b;
+  line-height: 1.3;
+  font-size: 12px;
+}
+
+.dashboard-wow-page .blue-main {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34,197,94,.18), transparent 38%),
+    linear-gradient(135deg, rgba(255,255,255,.96), rgba(236,253,245,.92));
+  border-color: rgba(34,197,94,.20);
+}
+
+.dashboard-wow-page .chart-card,
+.dashboard-wow-page .panel-block,
+.dashboard-wow-page .executive-section,
+.dashboard-wow-page .dashboard-process-panel {
+  border-radius: 24px !important;
+  border: 1px solid rgba(226,232,240,.94) !important;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.96), rgba(255,255,255,.88)) !important;
+  box-shadow: 0 22px 60px rgba(15,23,42,.08), inset 0 1px 0 rgba(255,255,255,.92) !important;
+}
+
+.dashboard-wow-page .chart-card,
+.dashboard-wow-page .executive-section,
+.dashboard-wow-page .dashboard-process-panel {
+  padding: 22px;
+}
+
+.dashboard-wow-page .dashboard-process-grid,
+.dashboard-wow-page .dashboard-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.dashboard-wow-page .premium-process-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr);
+}
+
+.dashboard-wow-page .full-span {
+  grid-column: 1 / -1;
+}
+
+.dashboard-wow-page .subsection-title {
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 950;
+  letter-spacing: -.01em;
+  margin-bottom: 14px;
+}
+
+.dashboard-wow-page .chart-container {
+  width: 100%;
+  min-height: 300px;
+}
+
+.dashboard-wow-page .executive-chart {
+  height: 340px;
+}
+
+.dashboard-wow-page .large-executive-chart {
+  height: 380px;
+}
+
+.dashboard-wow-page .indicator-summary-grid,
+.dashboard-wow-page .indicator-trend-grid,
+.dashboard-wow-page .process-overview-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.dashboard-wow-page .indicator-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+}
+
+.dashboard-wow-page .indicator-trend-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.dashboard-wow-page .process-overview-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.dashboard-wow-page .indicator-summary-card,
+.dashboard-wow-page .indicator-trend-card,
+.dashboard-wow-page .process-card {
+  padding: 18px;
+}
+
+.dashboard-wow-page .indicator-card-head,
+.dashboard-wow-page .indicator-trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.dashboard-wow-page .indicator-code {
+  color: #059669;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+
+.dashboard-wow-page .indicator-name {
+  margin-top: 5px;
+  color: #0f172a;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.dashboard-wow-page .indicator-main-value {
+  margin-top: 16px;
+  color: #059669;
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.dashboard-wow-page .indicator-main-value.small {
+  font-size: 26px;
+}
+
+.dashboard-wow-page .indicator-rules {
+  display: grid;
+  gap: 7px;
+  margin-top: 16px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.dashboard-wow-page .indicator-rules strong {
+  color: #0f172a;
+}
+
+.dashboard-wow-page .mini-chart {
+  height: 95px;
+  margin-top: 12px;
+}
+
+.dashboard-wow-page .trend-badge {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: #047857;
+  background: rgba(34,197,94,.10);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.dashboard-wow-page .trend-badge.down {
+  color: #dc2626;
+  background: rgba(239,68,68,.10);
+}
+
+.dashboard-wow-page .trend-badge.stable {
+  color: #b45309;
+  background: rgba(245,158,11,.12);
+}
+
+.dashboard-wow-page .process-rank-chip {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #047857;
+  background: rgba(34,197,94,.10);
+  font-weight: 950;
+}
+
+.dashboard-wow-page .process-card-title {
+  margin-top: 12px;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.dashboard-wow-page .process-card-value {
+  margin-top: 10px;
+  color: #059669;
+  font-size: 30px;
+  font-weight: 950;
+}
+
+.dashboard-wow-page .table-wrap {
+  overflow: auto;
+  border-radius: 18px;
+  border: 1px solid #e2e8f0;
+  background: rgba(255,255,255,.72);
+}
+
+.dashboard-wow-page table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dashboard-wow-page th {
+  height: 52px;
+  padding: 0 16px;
+  color: #059669;
+  background: rgba(248,250,252,.96);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dashboard-wow-page td {
+  height: 56px;
+  padding: 0 16px;
+  color: #1e293b;
+  border-bottom: 1px solid #e5eaf1;
+}
+
+.dashboard-wow-page tr:hover td {
+  background: rgba(34,197,94,.035);
+}
+
+.dashboard-wow-page .empty {
+  height: 120px;
+  text-align: center;
+  color: #94a3b8;
+  font-weight: 850;
+}
+
+.dashboard-wow-page .status.ok {
+  color: #047857;
+  background: rgba(34,197,94,.11);
+}
+
+.dashboard-wow-page .status.warning {
+  color: #b45309;
+  background: rgba(245,158,11,.12);
+}
+
+.dashboard-wow-page .status.critical {
+  color: #dc2626;
+  background: rgba(239,68,68,.10);
+}
+
+.dashboard-wow-page .recharts-wrapper text {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+}
+
+.dashboard-wow-page .recharts-cartesian-grid line {
+  stroke: #dbeee4;
+}
+
+@media (max-width: 1500px) {
+  .dashboard-wow-page .dashboard-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .dashboard-wow-page .executive-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1180px) {
+  .dashboard-wow-page {
+    padding: 24px;
+  }
+
+  .dashboard-wow-page .dashboard-header,
+  .dashboard-wow-page .process-focus-banner {
+    flex-direction: column;
+  }
+
+  .dashboard-wow-page .dashboard-filters,
+  .dashboard-wow-page .dashboard-process-grid,
+  .dashboard-wow-page .dashboard-overview-grid,
+  .dashboard-wow-page .premium-process-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-wow-page .executive-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-wow-page .chart-container,
+  .dashboard-wow-page .executive-chart,
+  .dashboard-wow-page .large-executive-chart {
+    min-height: 320px;
+    height: 340px;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-wow-page {
+    padding: 18px;
+  }
+
+  .dashboard-wow-page .dashboard-header h3 {
+    font-size: 32px;
+  }
+
+  .dashboard-wow-page .filters-card,
+  .dashboard-wow-page .chart-card,
+  .dashboard-wow-page .panel-block,
+  .dashboard-wow-page .executive-section,
+  .dashboard-wow-page .dashboard-process-panel {
+    border-radius: 18px !important;
+    padding: 18px !important;
+  }
+
+  .dashboard-wow-page .executive-kpi-grid,
+  .dashboard-wow-page .indicator-summary-grid,
+  .dashboard-wow-page .indicator-trend-grid,
+  .dashboard-wow-page .process-overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ============================================================
+   ETO DASHBOARD WOW FINAL - overrides visuales
+   ============================================================ */
+
+.dashboard-wow-page {
+  padding: clamp(24px, 2.2vw, 38px) !important;
+  background:
+    radial-gradient(circle at 98% 0%, rgba(34,197,94,.16), transparent 30%),
+    radial-gradient(circle at 0% 12%, rgba(5,150,105,.09), transparent 28%),
+    linear-gradient(135deg, #ffffff 0%, #f8fbff 44%, #f2fbf7 100%) !important;
+}
+
+.dashboard-wow-page::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .34;
+  background:
+    linear-gradient(115deg, transparent 0 58%, rgba(34,197,94,.06) 58.4%, transparent 59%),
+    radial-gradient(circle at 88% 28%, rgba(34,197,94,.09) 0 2px, transparent 3px),
+    radial-gradient(circle at 92% 36%, rgba(34,197,94,.12) 0 3px, transparent 4px),
+    radial-gradient(circle at 80% 20%, rgba(34,197,94,.08) 0 2px, transparent 3px);
+}
+
+.dashboard-wow-page .dashboard-header {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 18px;
+  padding: 4px 2px 2px;
+}
+
+.dashboard-wow-page .dashboard-header h3 {
+  font-size: clamp(34px, 2.7vw, 50px) !important;
+  line-height: .98 !important;
+  letter-spacing: -.055em !important;
+}
+
+.dashboard-wow-page .dashboard-header p {
+  max-width: 760px;
+  font-size: 15px !important;
+  color: #64748b !important;
+}
+
+.dashboard-wow-page .dashboard-header-badge {
+  height: 38px;
+  padding: 0 18px !important;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px !important;
+  color: #047857 !important;
+  border: 1px solid rgba(34,197,94,.24) !important;
+  background:
+    radial-gradient(circle at 30% 0%, rgba(34,197,94,.18), transparent 52%),
+    rgba(255,255,255,.88) !important;
+  box-shadow: 0 14px 32px rgba(15,23,42,.07) !important;
+}
+
+.dashboard-wow-page .filters-card {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 22px !important;
+  padding: 22px !important;
+  border-color: rgba(34,197,94,.18) !important;
+  background:
+    radial-gradient(circle at 98% 0%, rgba(34,197,94,.10), transparent 30%),
+    rgba(255,255,255,.92) !important;
+  box-shadow:
+    0 22px 60px rgba(15,23,42,.08),
+    inset 0 1px 0 rgba(255,255,255,.90) !important;
+  backdrop-filter: blur(12px);
+}
+
+.dashboard-wow-page .dashboard-filters {
+  display: grid !important;
+  grid-template-columns: 1.08fr 1.35fr .62fr .62fr .62fr .72fr .72fr 1fr;
+  gap: 14px !important;
+  align-items: end !important;
+}
+
+.dashboard-wow-page .field label {
+  color: #64748b !important;
+  font-size: 11px !important;
+  font-weight: 950 !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+}
+
+.dashboard-wow-page .field input,
+.dashboard-wow-page .field select {
+  min-height: 44px !important;
+  border-radius: 13px !important;
+  border: 1px solid #dbe7f2 !important;
+  background: rgba(255,255,255,.90) !important;
+  color: #0f172a !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.86) !important;
+}
+
+.dashboard-wow-page .field input:focus,
+.dashboard-wow-page .field select:focus {
+  border-color: rgba(34,197,94,.55) !important;
+  box-shadow: 0 0 0 4px rgba(34,197,94,.12) !important;
+}
+
+.dashboard-wow-page .primary {
+  min-height: 46px !important;
+  border-radius: 14px !important;
+  color: #fff !important;
+  background:
+    radial-gradient(circle at 28% 10%, rgba(255,255,255,.24), transparent 28%),
+    linear-gradient(135deg, #047857 0%, #059669 45%, #22c55e 100%) !important;
+  border: 0 !important;
+  box-shadow: 0 16px 34px rgba(34,197,94,.29) !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-wow-page .secondary {
+  border-radius: 14px !important;
+  border: 1px solid rgba(34,197,94,.18) !important;
+  color: #047857 !important;
+  background: rgba(34,197,94,.07) !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-wow-page .process-focus-banner {
+  position: relative;
+  z-index: 1;
+  border-radius: 24px !important;
+  border: 1px solid rgba(34,197,94,.20) !important;
+  background:
+    radial-gradient(circle at 94% 4%, rgba(34,197,94,.14), transparent 33%),
+    linear-gradient(135deg, rgba(255,255,255,.96), rgba(240,253,244,.62)) !important;
+  box-shadow: 0 20px 48px rgba(15,23,42,.07), inset 0 1px 0 rgba(255,255,255,.92) !important;
+}
+
+.dashboard-wow-page .process-focus-banner h2 {
+  font-size: clamp(30px, 2.5vw, 44px) !important;
+  letter-spacing: -.055em !important;
+}
+
+.dashboard-wow-page .status-pill {
+  color: #047857 !important;
+  background: rgba(34,197,94,.09) !important;
+  border: 1px solid rgba(34,197,94,.22) !important;
+  box-shadow: 0 10px 24px rgba(34,197,94,.08) !important;
+}
+
+.dashboard-wow-page .status-pill.dark {
+  color: #064e3b !important;
+  background: rgba(236,253,245,.80) !important;
+}
+
+.dashboard-wow-page .clean-kpis {
+  position: relative;
+  z-index: 1;
+  gap: 14px !important;
+}
+
+.dashboard-wow-page .executive-kpi {
+  min-height: 112px !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(226,232,240,.96) !important;
+  background:
+    radial-gradient(circle at 96% 6%, rgba(34,197,94,.12), transparent 34%),
+    rgba(255,255,255,.94) !important;
+  box-shadow: 0 18px 42px rgba(15,23,42,.075) !important;
+}
+
+.dashboard-wow-page .executive-kpi::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 16px;
+  bottom: 16px;
+  width: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #059669, #22c55e);
+}
+
+.dashboard-wow-page .executive-kpi span {
+  color: #64748b !important;
+  font-size: 11px !important;
+  letter-spacing: .08em !important;
+}
+
+.dashboard-wow-page .executive-kpi strong {
+  color: #047857 !important;
+  font-size: clamp(27px, 2vw, 36px) !important;
+  letter-spacing: -.04em !important;
+}
+
+.dashboard-wow-page .executive-kpi small {
+  color: #64748b !important;
+}
+
+.dashboard-wow-page .premium-chart-card,
+.dashboard-wow-page .panel-block,
+.dashboard-wow-page .executive-section {
+  position: relative;
+  z-index: 1;
+  border-radius: 24px !important;
+  border: 1px solid rgba(226,232,240,.96) !important;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.98), rgba(255,255,255,.92)) !important;
+  box-shadow:
+    0 22px 54px rgba(15,23,42,.08),
+    inset 0 1px 0 rgba(255,255,255,.92) !important;
+}
+
+.dashboard-wow-page .full-span {
+  grid-column: 1 / -1;
+}
+
+.dashboard-wow-page .dashboard-process-grid,
+.dashboard-wow-page .premium-process-grid {
+  position: relative;
+  z-index: 1;
+  grid-template-columns: minmax(0, 1.45fr) minmax(360px, .55fr) !important;
+  gap: 18px !important;
+}
+
+.dashboard-wow-page .premium-process-grid .premium-chart-card:first-child {
+  min-height: 390px;
+}
+
+.dashboard-wow-page .subsection-title {
+  color: #0f172a !important;
+  font-size: 15px !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-wow-page .chart-container {
+  min-height: 330px !important;
+}
+
+.dashboard-wow-page .executive-chart {
+  min-height: 330px !important;
+}
+
+.dashboard-wow-page .donut-card .chart-container {
+  min-height: 330px !important;
+}
+
+.dashboard-wow-page .indicator-summary-grid,
+.dashboard-wow-page .indicator-trend-grid {
+  gap: 16px !important;
+}
+
+.dashboard-wow-page .clean-indicator-card,
+.dashboard-wow-page .clean-trend-card {
+  overflow: hidden;
+  border-radius: 22px !important;
+  border: 1px solid rgba(226,232,240,.96) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34,197,94,.10), transparent 30%),
+    rgba(255,255,255,.96) !important;
+}
+
+.dashboard-wow-page .indicator-main-value {
+  color: #047857 !important;
+}
+
+.dashboard-wow-page .trend-badge {
+  border: 1px solid rgba(34,197,94,.18) !important;
+  background: rgba(34,197,94,.08) !important;
+  color: #047857 !important;
+}
+
+.dashboard-wow-page .dashboard-overview-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr) !important;
+}
+
+@media (max-width: 1500px) {
+  .dashboard-wow-page .dashboard-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  .dashboard-wow-page .dashboard-filters,
+  .dashboard-wow-page .dashboard-process-grid,
+  .dashboard-wow-page .premium-process-grid,
+  .dashboard-wow-page .dashboard-overview-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-wow-page .executive-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-wow-page {
+    padding: 18px !important;
+  }
+
+  .dashboard-wow-page .executive-kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-wow-page .dashboard-header,
+  .dashboard-wow-page .process-focus-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+
+/* ============================================================
+   ETO DASHBOARD EXACTO REFERENCIA - SOLO DISEÑO FINAL
+   Conserva lógica, escalas, tooltip, áreas warning/critical y modal.
+   ============================================================ */
+
+.dashboard-wow-page.dashboard-master-card {
+  padding: 10px 14px 14px !important;
+  background: #f7fbfa !important;
+  overflow: auto !important;
+  color: #0f172a !important;
+}
+
+.dashboard-wow-page.dashboard-master-card::before,
+.dashboard-wow-page.dashboard-master-card::after {
+  opacity: .28 !important;
+  pointer-events: none !important;
+}
+
+/* Header compacto como referencia */
+.dashboard-wow-page .dashboard-header {
+  margin: 0 0 8px !important;
+  padding: 10px 16px 8px !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.dashboard-wow-page .section-kicker {
+  color: #047857 !important;
+  font-size: 9.5px !important;
+  line-height: 1 !important;
+  font-weight: 950 !important;
+  letter-spacing: .12em !important;
+  text-transform: uppercase !important;
+}
+
+.dashboard-wow-page .dashboard-header h3 {
+  margin: 5px 0 3px !important;
+  color: #0f172a !important;
+  font-size: 24px !important;
+  line-height: 1 !important;
+  letter-spacing: -.035em !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-wow-page .dashboard-header p {
+  margin: 0 !important;
+  max-width: 720px !important;
+  color: #64748b !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+}
+
+.dashboard-wow-page .dashboard-header-badge {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 14px !important;
+  border-radius: 999px !important;
+  color: #047857 !important;
+  background: rgba(34,197,94,.10) !important;
+  border: 1px solid rgba(34,197,94,.22) !important;
+  box-shadow: 0 8px 18px rgba(15,23,42,.04) !important;
+  font-size: 11px !important;
+  font-weight: 950 !important;
+}
+
+/* Filtros */
+.dashboard-wow-page .filters-card {
+  margin: 0 0 8px !important;
+  padding: 15px 16px !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(34,197,94,.18) !important;
+  background: #fff !important;
+  box-shadow: 0 8px 20px rgba(15,23,42,.055) !important;
+}
+
+.dashboard-wow-page .dashboard-filters {
+  display: grid !important;
+  grid-template-columns: 1.15fr 1.55fr .66fr .66fr .66fr .74fr .74fr !important;
+  gap: 10px 12px !important;
+  align-items: end !important;
+}
+
+.dashboard-wow-page .field {
+  gap: 5px !important;
+}
+
+.dashboard-wow-page .field label {
+  color: #64748b !important;
+  font-size: 9px !important;
+  line-height: 1 !important;
+  font-weight: 950 !important;
+  letter-spacing: .09em !important;
+  text-transform: uppercase !important;
+}
+
+.dashboard-wow-page .field input,
+.dashboard-wow-page .field select {
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 12px !important;
+  border-radius: 9px !important;
+  border: 1px solid #dbe7f0 !important;
+  background: rgba(255,255,255,.98) !important;
+  color: #18324f !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.86) !important;
+}
+
+.dashboard-wow-page .field input:focus,
+.dashboard-wow-page .field select:focus {
+  border-color: rgba(34,197,94,.58) !important;
+  box-shadow: 0 0 0 3px rgba(34,197,94,.12) !important;
+}
+
+.dashboard-wow-page .field input:disabled,
+.dashboard-wow-page .field select:disabled {
+  background: #f1f5f9 !important;
+  color: #94a3b8 !important;
+}
+
+.dashboard-wow-page .action-field {
+  grid-column: span 2 !important;
+}
+
+.dashboard-wow-page .primary {
+  height: 34px !important;
+  min-height: 34px !important;
+  min-width: 220px !important;
+  border-radius: 11px !important;
+  color: #fff !important;
+  background: linear-gradient(135deg, #047857, #059669 55%, #16a34a) !important;
+  border: 0 !important;
+  box-shadow: 0 10px 22px rgba(22,163,74,.28) !important;
+  font-size: 11px !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-wow-page .primary::before {
+  content: "◴";
+  font-size: 13px;
+  margin-right: 8px;
+  opacity: .95;
+}
+
+/* Proceso seleccionado */
+.dashboard-wow-page .process-focus-banner {
+  min-height: 68px !important;
+  margin: 0 0 8px !important;
+  padding: 10px 16px 10px 86px !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(34,197,94,.18) !important;
+  background:
+    radial-gradient(circle at 88% 10%, rgba(34,197,94,.12), transparent 38%),
+    linear-gradient(135deg, #ffffff, #f4fbf7) !important;
+  box-shadow: 0 8px 20px rgba(15,23,42,.055) !important;
+  align-items: center !important;
+}
+
+.dashboard-wow-page .process-focus-banner::before {
+  content: "" !important;
+  position: absolute !important;
+  left: 18px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 52px !important;
+  height: 52px !important;
+  border-radius: 13px !important;
+  background:
+    linear-gradient(#059669 0 0) 17px 15px / 18px 3px no-repeat,
+    linear-gradient(#059669 0 0) 17px 23px / 18px 3px no-repeat,
+    linear-gradient(#059669 0 0) 17px 31px / 14px 3px no-repeat,
+    linear-gradient(#059669 0 0) 12px 12px / 4px 24px no-repeat,
+    radial-gradient(circle at 34px 35px, #ecfdf5 0 7px, transparent 8px),
+    radial-gradient(circle at 37px 38px, #059669 0 3px, transparent 4px),
+    rgba(34,197,94,.13) !important;
+  border: 1px solid rgba(34,197,94,.22) !important;
+  box-shadow: 0 10px 20px rgba(34,197,94,.12) !important;
+}
+
+.dashboard-wow-page .process-focus-banner h2 {
+  margin: 4px 0 2px !important;
+  font-size: 22px !important;
+  line-height: 1 !important;
+  letter-spacing: -.035em !important;
+  color: #0f172a !important;
+}
+
+.dashboard-wow-page .process-focus-banner p {
+  margin: 0 !important;
+  color: #64748b !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+}
+
+.dashboard-wow-page .focus-banner-side {
+  gap: 8px !important;
+}
+
+.dashboard-wow-page .status-pill,
+.dashboard-wow-page .status-pill.dark {
+  min-height: 28px !important;
+  padding: 0 12px !important;
+  border-radius: 999px !important;
+  color: #047857 !important;
+  background: rgba(34,197,94,.08) !important;
+  border: 1px solid rgba(34,197,94,.18) !important;
+  box-shadow: none !important;
+  font-size: 10px !important;
+  font-weight: 950 !important;
+}
+
+/* KPIs con iconos */
+.dashboard-wow-page .executive-kpi-grid.clean-kpis {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  margin: 0 0 8px !important;
+}
+
+.dashboard-wow-page .executive-kpi {
+  min-height: 70px !important;
+  padding: 12px 12px 10px 78px !important;
+  border-radius: 13px !important;
+  border: 1px solid rgba(226,232,240,.96) !important;
+  background: #fff !important;
+  box-shadow: 0 7px 18px rgba(15,23,42,.055) !important;
+}
+
+.dashboard-wow-page .executive-kpi::after {
+  display: none !important;
+}
+
+.dashboard-wow-page .executive-kpi::before {
+  content: "" !important;
+  position: absolute !important;
+  left: 18px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 12px !important;
+  background: rgba(34,197,94,.12) !important;
+  border: 0 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.88) !important;
+}
+
+.dashboard-wow-page .executive-kpi:nth-child(1)::before {
+  background:
+    linear-gradient(#16a34a 0 0) 13px 26px / 5px 10px no-repeat,
+    linear-gradient(#16a34a 0 0) 22px 19px / 5px 17px no-repeat,
+    linear-gradient(#16a34a 0 0) 31px 11px / 5px 25px no-repeat,
+    radial-gradient(circle at 13px 16px, #16a34a 0 2px, transparent 3px),
+    rgba(34,197,94,.12) !important;
+}
+
+.dashboard-wow-page .executive-kpi:nth-child(2)::before {
+  background:
+    radial-gradient(ellipse at center, transparent 0 12px, #16a34a 13px 14px, transparent 15px) center 12px / 30px 11px no-repeat,
+    radial-gradient(ellipse at center, transparent 0 12px, #16a34a 13px 14px, transparent 15px) center 20px / 30px 11px no-repeat,
+    radial-gradient(ellipse at center, transparent 0 12px, #16a34a 13px 14px, transparent 15px) center 28px / 30px 11px no-repeat,
+    rgba(34,197,94,.12) !important;
+}
+
+.dashboard-wow-page .executive-kpi:nth-child(3)::before {
+  background:
+    linear-gradient(135deg, transparent 52%, #16a34a 53% 60%, transparent 61%) 14px 21px / 15px 8px no-repeat,
+    linear-gradient(45deg, transparent 53%, #16a34a 54% 62%, transparent 63%) 23px 16px / 12px 16px no-repeat,
+    radial-gradient(circle, transparent 0 13px, #16a34a 14px 16px, transparent 17px),
+    rgba(34,197,94,.12) !important;
+}
+
+.dashboard-wow-page .executive-kpi:nth-child(4)::before {
+  background:
+    linear-gradient(60deg, transparent 42%, #f59e0b 43% 48%, transparent 49%) 12px 11px / 24px 24px no-repeat,
+    linear-gradient(-60deg, transparent 42%, #f59e0b 43% 48%, transparent 49%) 12px 11px / 24px 24px no-repeat,
+    linear-gradient(#f59e0b 0 0) 23px 18px / 3px 12px no-repeat,
+    radial-gradient(circle at 24.5px 33px, #f59e0b 0 2px, transparent 3px),
+    rgba(245,158,11,.12) !important;
+}
+
+.dashboard-wow-page .executive-kpi:nth-child(5)::before {
+  background:
+    linear-gradient(45deg, #ef4444 0 0) 22px 12px / 3px 20px no-repeat,
+    radial-gradient(circle at 23.5px 35px, #ef4444 0 2px, transparent 3px),
+    radial-gradient(circle, transparent 0 13px, #ef4444 14px 16px, transparent 17px),
+    rgba(239,68,68,.12) !important;
+}
+
+.dashboard-wow-page .executive-kpi:nth-child(4) strong { color: #f59e0b !important; }
+.dashboard-wow-page .executive-kpi:nth-child(5) strong { color: #ef4444 !important; }
+
+.dashboard-wow-page .executive-kpi span {
+  font-size: 9.5px !important;
+  color: #465775 !important;
+  font-weight: 950 !important;
+  letter-spacing: .07em !important;
+}
+
+.dashboard-wow-page .executive-kpi strong {
+  margin-top: 4px !important;
+  color: #047857 !important;
+  font-size: 20px !important;
+  line-height: 1 !important;
+  letter-spacing: -.035em !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-wow-page .executive-kpi small {
+  margin-top: 4px !important;
+  color: #64748b !important;
+  font-size: 9.5px !important;
+  line-height: 1.15 !important;
+  font-weight: 650 !important;
+}
+
+/* Card del indicador: exacta/compacta */
+.dashboard-wow-page .premium-chart-card.full-span {
+  margin: 0 0 8px !important;
+  border-radius: 13px !important;
+  border: 1px solid rgba(226,232,240,.96) !important;
+  box-shadow: 0 7px 18px rgba(15,23,42,.055) !important;
+  overflow: hidden !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span > div:first-child {
+  padding: 9px 16px 8px 68px !important;
+  min-height: 58px !important;
+  background: #fff !important;
+  border-bottom: 1px solid #edf2f7 !important;
+  position: relative !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span > div:first-child::before {
+  content: "" !important;
+  position: absolute !important;
+  left: 18px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 11px !important;
+  background:
+    radial-gradient(circle at 50% 58%, transparent 0 13px, #fff 14px 16px, transparent 17px),
+    conic-gradient(from 210deg, #fff 0 72deg, transparent 73deg),
+    linear-gradient(135deg, #047857, #16a34a) !important;
+  box-shadow: 0 8px 18px rgba(22,163,74,.22) !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span h3 {
+  font-size: 16px !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+  letter-spacing: -.02em !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span > div:first-child [style*="font-size: 12"] {
+  font-size: 9px !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span > div:nth-child(2) {
+  padding: 8px 14px !important;
+  grid-template-columns: 1fr .95fr !important;
+  gap: 10px !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span > div:nth-child(2) > div {
+  min-height: 82px !important;
+  border-radius: 13px !important;
+  box-shadow: none !important;
+  border-color: #e5edf2 !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span [style*="font-size: 24px"] {
+  font-size: 18px !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span [style*="minHeight: 84"] {
+  min-height: 55px !important;
+}
+
+/* Gráficas inferiores */
+.dashboard-wow-page .dashboard-process-grid.premium-process-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 2.15fr) minmax(330px, .85fr) !important;
+  gap: 10px !important;
+  margin: 0 0 8px !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .premium-chart-card {
+  border-radius: 13px !important;
+  border: 1px solid rgba(226,232,240,.96) !important;
+  box-shadow: 0 7px 18px rgba(15,23,42,.055) !important;
+  background: #fff !important;
+  padding: 12px !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .premium-chart-card:first-child {
+  min-height: 330px !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .subsection-title {
+  margin-bottom: 8px !important;
+  color: #0f172a !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+  font-weight: 950 !important;
+  letter-spacing: .02em !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .secondary {
+  min-height: 28px !important;
+  height: 28px !important;
+  padding: 0 13px !important;
+  border-radius: 999px !important;
+  font-size: 10px !important;
+  color: #047857 !important;
+  background: rgba(34,197,94,.08) !important;
+  border: 1px solid rgba(34,197,94,.16) !important;
+  box-shadow: none !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .chart-container,
+.dashboard-wow-page .dashboard-process-grid .executive-chart {
+  height: 285px !important;
+  min-height: 285px !important;
+}
+
+.dashboard-wow-page .donut-card .chart-container {
+  height: 285px !important;
+  min-height: 285px !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .recharts-text,
+.dashboard-wow-page .dashboard-process-grid .recharts-cartesian-axis-tick-value {
+  font-size: 9px !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .recharts-label-list text,
+.dashboard-wow-page .dashboard-process-grid .recharts-label {
+  font-size: 9px !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .recharts-cartesian-grid line {
+  stroke: #e6f0ea !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .recharts-default-tooltip {
+  border-radius: 12px !important;
+  border-color: #dbece4 !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .premium-chart-card:first-child .recharts-responsive-container {
+  margin-top: -2px !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .premium-chart-card:first-child .subsection-title {
+  display: flex !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .premium-chart-card:first-child .subsection-title + .chart-container {
+  margin-top: 0 !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .premium-chart-card:first-child .chart-container + div {
+  margin-top: 2px !important;
+  gap: 6px 8px !important;
+  font-size: 8px !important;
+  line-height: 1.2 !important;
+}
+
+/* Pareto visual */
+.dashboard-wow-page .pareto-visual-card {
+  min-height: 240px !important;
+}
+
+.dashboard-wow-page .pareto-visual-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.dashboard-wow-page .pareto-visual-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1.8fr 56px;
+  align-items: center;
+  gap: 9px;
+  min-height: 21px;
+}
+
+.dashboard-wow-page .pareto-visual-row span {
+  color: #475569;
+  font-size: 9px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.dashboard-wow-page .pareto-visual-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #edf2f7;
+  overflow: hidden;
+}
+
+.dashboard-wow-page .pareto-visual-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #16a34a, #059669);
+}
+
+.dashboard-wow-page .pareto-visual-row strong {
+  text-align: right;
+  color: #334155;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.dashboard-wow-page .pareto-visual-axis {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  margin: 8px 0 0 39%;
+  color: #64748b;
+  font-size: 8.5px;
+  font-weight: 750;
+}
+
+.dashboard-wow-page .pareto-visual-axis span:last-child {
+  text-align: right;
+}
+
+.dashboard-wow-page .pareto-visual-note {
+  margin-top: 13px;
+  color: #64748b;
+  font-size: 8.5px;
+  font-weight: 750;
+}
+
+/* Ocultar secciones extras para que quede como la referencia visual */
+.dashboard-wow-page .executive-section {
+  display: none !important;
+}
+
+/* Responsive */
+@media (max-width: 1500px) {
+  .dashboard-wow-page .dashboard-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-wow-page .dashboard-process-grid.premium-process-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-wow-page .executive-kpi-grid.clean-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  .dashboard-wow-page .dashboard-filters,
+  .dashboard-wow-page .dashboard-process-grid.premium-process-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-wow-page .action-field {
+    grid-column: auto !important;
+  }
+
+  .dashboard-wow-page .executive-kpi-grid.clean-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-wow-page {
+    padding: 10px !important;
+  }
+
+  .dashboard-wow-page .dashboard-header,
+  .dashboard-wow-page .process-focus-banner {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+
+  .dashboard-wow-page .process-focus-banner {
+    padding-left: 16px !important;
+    padding-top: 74px !important;
+  }
+
+  .dashboard-wow-page .process-focus-banner::before {
+    left: 16px !important;
+    top: 16px !important;
+    transform: none !important;
+  }
+
+  .dashboard-wow-page .executive-kpi-grid.clean-kpis {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-wow-page .premium-chart-card.full-span > div:nth-child(2) {
+    grid-template-columns: 1fr !important;
+  }
+}
+/* ============================================================
+   AJUSTE FINAL SOLICITADO:
+   - Bloque de info/KPIs más pequeño
+   - Gráfica de tendencia más grande
+   - Pareto removido del JSX y oculto si quedó alguna clase
+   ============================================================ */
+
+.dashboard-wow-page .pareto-visual-card {
+  display: none !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span {
+  margin-bottom: 8px !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span > div:first-child {
+  padding: 9px 14px 8px 70px !important;
+  min-height: 58px !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span > div:first-child::before {
+  width: 34px !important;
+  height: 34px !important;
+  left: 18px !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span h3 {
+  font-size: 15px !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span > div:nth-child(2) {
+  padding: 8px 14px !important;
+  gap: 8px !important;
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, .96fr) !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span > div:nth-child(2) > div {
+  min-height: 78px !important;
+  padding: 12px !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span [style*="font-size: 18px"] {
+  font-size: 14px !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span [style*="font-size: 17px"] {
+  font-size: 13px !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span [style*="font-size: 12px"] {
+  font-size: 9px !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span [style*="gap: 14"] {
+  gap: 8px !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span [style*="minHeight: 84"] {
+  min-height: 48px !important;
+}
+
+.dashboard-wow-page .premium-chart-card.full-span [style*="padding: \"14px 16px\""] {
+  padding: 9px 11px !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid.premium-process-grid {
+  grid-template-columns: minmax(0, 2.15fr) minmax(330px, .85fr) !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .chart-container,
+.dashboard-wow-page .dashboard-process-grid .executive-chart {
+  height: 285px !important;
+  min-height: 285px !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .premium-chart-card:first-child {
+  min-height: 330px !important;
+}
+
+.dashboard-wow-page .donut-card .chart-container {
+  height: 285px !important;
+  min-height: 285px !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .premium-chart-card {
+  padding: 13px !important;
+}
+
+.dashboard-wow-page .dashboard-process-grid .chart-container + div {
+  margin-top: 4px !important;
+}
+
+@media (max-width: 1500px) {
+  .dashboard-wow-page .dashboard-process-grid.premium-process-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-wow-page .dashboard-process-grid .chart-container,
+  .dashboard-wow-page .dashboard-process-grid .executive-chart,
+  .dashboard-wow-page .donut-card .chart-container {
+    height: 310px !important;
+    min-height: 310px !important;
+  }
+}
+
+`;
+
 export default function DashboardView({ accessLevel, processes, indicators }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -2099,22 +3786,6 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
     historySummary,
     isStandardIndicatorSelected,
   ]);
-
-  const dashboardBarData = useMemo(() => {
-    if (!dashboardData?.indicator_cards?.length) return [];
-
-    return dashboardData.indicator_cards
-      .map((item) => ({
-        name: formatCompactName(item.code, 16),
-        fullName: `${item.code} - ${item.name}`,
-        general: Number(item.general || 0),
-        status: normalizeStatus(item.status),
-        fill: getBarColorByStatus(item.status),
-      }))
-      .filter((item) =>
-        isMatchingStatusFilter(item.status, dashboardFilter.status_filter)
-      );
-  }, [dashboardData, dashboardFilter.status_filter]);
 
   const globalRankingData = useMemo(() => {
     return (dashboardOverview?.process_ranking || [])
@@ -2360,14 +4031,15 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
   }, [dashboardData, entityDashboardBarData, dashboardFilter.status_filter]);
 
   return (
-    <section className="content-card dashboard-master-card">
+    <section className="dashboard-wow-page dashboard-master-card">
+      <style>{dashboardWowCss}</style>
       <div className="card-header-block dashboard-header">
         <div>
           <div className="section-kicker">ANALÍTICA EJECUTIVA</div>
           <h3>Dashboard corporativo</h3>
           <p>
             Vista global por procesos o análisis detallado por proceso con
-            tendencia, comparativos y Pareto.
+            tendencia y distribución ejecutiva.
           </p>
         </div>
         <div className="dashboard-header-badge">Nivel {accessLevel}</div>
@@ -3047,8 +4719,8 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   <div className="section-kicker">PROCESO SELECCIONADO</div>
                   <h2>{safeDisplay(dashboardData?.process?.name)}</h2>
                   <p>
-                    Lectura ejecutiva del proceso con tendencia, comparativos y
-                    foco de impacto.
+                    Lectura ejecutiva del proceso con tendencia, distribución y
+                    foco operativo.
                   </p>
                 </div>
                 <div className="focus-banner-side">
@@ -3205,157 +4877,6 @@ export default function DashboardView({ accessLevel, processes, indicators }) {
                   </div>
                 </section>
 
-                <section
-                  className="chart-card premium-chart-card full-span"
-                  style={{
-                    borderRadius: 24,
-                    border: `1px solid ${CHART_COLORS.cardBorder}`,
-                    boxShadow: CHART_COLORS.cardShadow,
-                    background: "#ffffff",
-                  }}
-                >
-                  <div className="subsection-title">Comparativo de indicadores</div>
-                  <div className="chart-container large-executive-chart">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={dashboardBarData}
-                        margin={{ top: 18, right: 18, left: 10, bottom: 50 }}
-                      >
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke={CHART_COLORS.grid}
-                        />
-                        <XAxis
-                          dataKey="name"
-                          interval={0}
-                          angle={-20}
-                          textAnchor="end"
-                          height={60}
-                        />
-                        <YAxis tickFormatter={(value) => `${value}%`} />
-                        <Tooltip
-                          formatter={(value) => formatPercent(value)}
-                          labelFormatter={(label, payload) =>
-                            payload?.[0]?.payload?.fullName || label
-                          }
-                        />
-                        <Bar
-                          dataKey="general"
-                          name="Resultado"
-                          radius={[10, 10, 0, 0]}
-                        >
-                          {dashboardBarData.map((entry, index) => (
-                            <Cell key={`indicator-bar-${index}`} fill={entry.fill} />
-                          ))}
-                          <LabelList
-                            dataKey="general"
-                            position="top"
-                            formatter={(value) => formatPercent(value)}
-                            style={{
-                              fill: CHART_COLORS.text,
-                              fontWeight: 800,
-                              fontSize: 11,
-                            }}
-                          />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </section>
-
-                <section
-                  className="chart-card premium-chart-card full-span"
-                  style={{
-                    borderRadius: 24,
-                    border: `1px solid ${CHART_COLORS.cardBorder}`,
-                    boxShadow: CHART_COLORS.cardShadow,
-                    background: "#ffffff",
-                  }}
-                >
-                  <div className="subsection-title">Pareto de impacto</div>
-                  <div className="chart-container large-executive-chart">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart
-                        data={(dashboardData.pareto || []).map((item) => ({
-                          ...item,
-                          shortName: formatCompactName(item.name, 24),
-                        }))}
-                        margin={{ top: 18, right: 18, left: 10, bottom: 50 }}
-                      >
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke={CHART_COLORS.grid}
-                        />
-                        <XAxis
-                          dataKey="shortName"
-                          interval={0}
-                          angle={-20}
-                          textAnchor="end"
-                          height={60}
-                        />
-                        <YAxis yAxisId="left" />
-                        <YAxis
-                          yAxisId="right"
-                          orientation="right"
-                          domain={[0, 100]}
-                          tickFormatter={(value) => `${value}%`}
-                        />
-                        <Tooltip
-                          formatter={(value, name) => {
-                            if (name === "% Acumulado") {
-                              return `${Number(value).toFixed(1)}%`;
-                            }
-                            return formatPlainNumber(value);
-                          }}
-                          labelFormatter={(label, payload) =>
-                            payload?.[0]?.payload?.name || label
-                          }
-                        />
-                        <Bar
-                          yAxisId="left"
-                          dataKey="value"
-                          name="Impacto"
-                          fill={CHART_COLORS.blue}
-                          radius={[8, 8, 0, 0]}
-                        >
-                          <LabelList
-                            dataKey="value"
-                            position="top"
-                            formatter={(value) => formatPlainNumber(value)}
-                            style={{
-                              fill: CHART_COLORS.text,
-                              fontWeight: 800,
-                              fontSize: 11,
-                            }}
-                          />
-                        </Bar>
-
-                        <Line
-                          yAxisId="right"
-                          type="monotone"
-                          dataKey="cumulative"
-                          name="% Acumulado"
-                          stroke={CHART_COLORS.navy}
-                          strokeWidth={3}
-                          dot={{ r: 4, fill: CHART_COLORS.navy }}
-                        >
-                          <LabelList
-                            dataKey="cumulative"
-                            position="top"
-                            formatter={(value) =>
-                              `${Number(value).toFixed(1)}%`
-                            }
-                            style={{
-                              fill: CHART_COLORS.text,
-                              fontWeight: 800,
-                              fontSize: 11,
-                            }}
-                          />
-                        </Line>
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
-                </section>
               </div>
 
               <section className="executive-section">
